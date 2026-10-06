@@ -13,14 +13,16 @@ export function predictBoss(events,boss,world,now=Date.now()){
  const rows=events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
  if(rows.length<3)return {boss,world,status:'insufficient',sampleSize:rows.length,confidence:0,probability:0,explain:[`Apenas ${rows.length} aparições confirmadas; são necessárias pelo menos 3 para estimar um intervalo.`]};
  const ints=robustIntervals(rows);if(ints.length<2)return {boss,world,status:'insufficient',sampleSize:rows.length,confidence:0,probability:0,explain:['Histórico insuficiente para calcular intervalos consistentes.']};
- const center=median(ints),q15=quantile(ints,.15),q85=quantile(ints,.85),q05=quantile(ints,.05),q95=quantile(ints,.95),mad=median(ints.map(x=>Math.abs(x-center)))||DAY;
- const last=rows.at(-1),start=last.estimatedAt+Math.max(3600000,q15),end=last.estimatedAt+Math.max(q15,q85),precise=rows.filter(highPrecision);
+ const center=median(ints),q15=quantile(ints,.15),q85=quantile(ints,.85),q05=quantile(ints,.05),q95=quantile(ints,.95),rawMad=median(ints.map(x=>Math.abs(x-center)))||0;
+ const last=rows.at(-1),precise=rows.filter(highPrecision);
+ const precisionReady=precise.length>=6&&precise.length/rows.length>=.5&&rawMad<=DAY;
+ const uncertaintyFloor=precisionReady?Math.max(30*60000,rawMad):Math.max(12*3600000,rawMad);
+ const centerAt=last.estimatedAt+center,start=Math.round(Math.min(last.estimatedAt+Math.max(3600000,q15),centerAt-uncertaintyFloor)),end=Math.round(Math.max(last.estimatedAt+Math.max(q15,q85),centerAt+uncertaintyFloor)),mad=Math.max(rawMad,precisionReady?30*60000:12*3600000);
  const consistency=clamp(1-mad/Math.max(center,1),0,1),sampleFactor=1-Math.exp(-ints.length/8),sourceConfidence=median(rows.slice(-10).map(e=>e.confidence))||.5;
  const bt=backtest(rows),backtestFactor=bt.windowAccuracy==null?.55:bt.windowAccuracy;
  const confidence=clamp(.15+.28*sampleFactor+.27*consistency+.18*sourceConfidence+.12*backtestFactor,.12,.96);
  const probability=clamp(.35+.35*sampleFactor+.2*consistency+.1*sourceConfidence,.25,.94);
- const precisionReady=precise.length>=6&&precise.length/rows.length>=.5&&mad<=DAY;
- const likelyAt=precisionReady?Math.round(last.estimatedAt+center):null;
+ const likelyAt=precisionReady?Math.round(centerAt):null;
  const recent=ints.slice(-Math.min(5,ints.length)),older=ints.slice(0,Math.max(0,ints.length-5));let trend='estável';
  if(older.length>=3){const d=median(recent)-median(older);if(d>Math.max(6*3600000,center*.12))trend='intervalos aumentando';else if(d<-Math.max(6*3600000,center*.12))trend='intervalos diminuindo';}
  const phase=now<start?'monitoring':now<=end?'active':'overdue';
