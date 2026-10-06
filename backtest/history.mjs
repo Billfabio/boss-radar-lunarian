@@ -39,7 +39,7 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
     if(!Number.isFinite(m.predictedAt))continue;
     const minuteEligible=precise(actual),error=minuteEligible?Math.abs(actual.estimatedAt-m.predictedAt)/60000:null,windowStart=Number.isFinite(m.windowStart)?m.windowStart:m.predictedAt-12*H,windowEnd=Number.isFinite(m.windowEnd)?m.windowEnd:m.predictedAt+12*H,windowHit=minuteEligible?actual.estimatedAt>=windowStart&&actual.estimatedAt<=windowEnd:Math.max(actual.startAt||actual.estimatedAt,windowStart)<=Math.min(actual.endAt||actual.estimatedAt,windowEnd);
     const splitRatio=(i-minTrain)/Math.max(1,rows.length-minTrain),split=splitRatio<.6?'development':splitRatio<.8?'validation':'test';
-    const rec={boss,world,eventId:actual.id,actualAt:actual.estimatedAt,actualPrecision:minuteEligible?'time':'day',trainSamples:i,split,model:m.name,predictedAt:Math.round(m.predictedAt),errorMinutes:error==null?null:Math.round(error*10)/10,windowHit,confidenceRaw:m.name==='adaptive_ensemble'&&adaptive.status==='ready'?adaptive.confidence:null,confidence:m.name==='adaptive_ensemble'&&calibrated?calibrated.calibrated:null};
+    const rec={boss,world,eventId:actual.id,actualAt:actual.estimatedAt,resolvedAt:actual.estimatedAt,actualPrecision:minuteEligible?'time':'day',trainSamples:i,split,model:m.name,predictedAt:Math.round(m.predictedAt),errorMinutes:error==null?null:Math.round(error*10)/10,windowHit,confidenceRaw:m.name==='adaptive_ensemble'&&adaptive.status==='ready'?adaptive.confidence:null,confidence:m.name==='adaptive_ensemble'&&calibrated?calibrated.calibrated:null};
     results.push(rec);all.push(rec);
    }
    if(adaptive.status==='ready'){const ensemble=results.at(-1)?.model==='adaptive_ensemble'?results.at(-1):results.findLast?.(x=>x.eventId===actual.id&&x.model==='adaptive_ensemble');if(ensemble)calibrationHistory.push({boss,world,resolvedAt:actual.estimatedAt,confidenceRaw:adaptive.confidence,confidence:calibrated?.calibrated??adaptive.confidence,windowHit:ensemble.windowHit,errorMinutes:ensemble.errorMinutes});}
@@ -48,8 +48,13 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
   const names=[...new Set(results.map(x=>x.model))],modelStats=names.map(name=>({model:name,...summarize(results.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
   const best=modelStats.find(x=>x.maeMinutes!=null);perBoss.push({boss,events:rows.length,testedEvents:Math.max(0,rows.length-minTrain),bestModel:best?.model||null,models:modelStats});
  }
- const overallModels=[...new Set(all.map(x=>x.model))].map(name=>({model:name,...summarize(all.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
- const ensembleRows=all.filter(x=>x.model==='adaptive_ensemble'),temporalValidation={development:summarize(ensembleRows.filter(x=>x.split==='development')),validation:summarize(ensembleRows.filter(x=>x.split==='validation')),test:summarize(ensembleRows.filter(x=>x.split==='test'))};
- const calibration=calibrationReport(calibrationHistory,world);
- return {world,generatedAt:Date.now(),eventsEvaluated:new Set(all.map(x=>x.eventId)).size,preciseEventsEvaluated:new Set(all.filter(x=>x.actualPrecision==='time').map(x=>x.eventId)).size,predictionsEvaluated:all.length,overallModels,perBoss:perBoss.sort((a,b)=>(b.testedEvents||0)-(a.testedEvents||0)||a.boss.localeCompare(b.boss)),temporalValidation,calibration,recentResults:all.slice(-500)};
+ const modelNames=[...new Set(all.map(x=>x.model))],overallModels=modelNames.map(name=>({model:name,...summarize(all.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
+ const byModel=Object.fromEntries(modelNames.map(name=>{const rows=all.filter(x=>x.model===name);return [name,{development:summarize(rows.filter(x=>x.split==='development')),validation:summarize(rows.filter(x=>x.split==='validation')),test:summarize(rows.filter(x=>x.split==='test'))}];}));
+ const ensembleRows=all.filter(x=>x.model==='adaptive_ensemble'),temporalValidation={development:summarize(ensembleRows.filter(x=>x.split==='development')),validation:summarize(ensembleRows.filter(x=>x.split==='validation')),test:summarize(ensembleRows.filter(x=>x.split==='test')),byModel};
+ const calibration=calibrationReport(calibrationHistory,world),calibrationBySplit={
+   development:calibrationReport(ensembleRows.filter(x=>x.split==='development'),world),
+   validation:calibrationReport(ensembleRows.filter(x=>x.split==='validation'),world),
+   test:calibrationReport(ensembleRows.filter(x=>x.split==='test'),world)
+ };
+ return {world,generatedAt:Date.now(),eventsEvaluated:new Set(all.map(x=>x.eventId)).size,preciseEventsEvaluated:new Set(all.filter(x=>x.actualPrecision==='time').map(x=>x.eventId)).size,predictionsEvaluated:all.length,overallModels,perBoss:perBoss.sort((a,b)=>(b.testedEvents||0)-(a.testedEvents||0)||a.boss.localeCompare(b.boss)),temporalValidation,calibration,calibrationBySplit,recentResults:all.slice(-500)};
 }
