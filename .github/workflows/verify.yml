@@ -28,6 +28,10 @@ jobs:
         run: pnpm run check:intelligence
       - name: Run tests
         run: pnpm test
+      - name: Intelligence temporal regression gate
+        run: pnpm run test:intelligence-regression
+      - name: Intelligence synthetic load benchmark
+        run: pnpm run test:intelligence-load
       - name: Build Cloudflare package
         run: pnpm run cloud:build
       - name: Smoke test Cloudflare package
