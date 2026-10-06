@@ -187,7 +187,7 @@ export function createIntelligence({state,persist,broadcast}){
  function simulate(boss,world){
    const prediction=calibratedPrediction(predictAdaptive(intel.events,boss,world,intel.models)),events=intel.events.filter(e=>e.boss===boss&&e.world===world&&/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt);
    const recent=events.slice(-100),intervals=[];for(let i=1;i<recent.length;i++)intervals.push({from:recent[i-1].estimatedAt,to:recent[i].estimatedAt,ms:recent[i].estimatedAt-recent[i-1].estimatedAt});
-   const model=modelPublic(intel.models,world).find(x=>x.boss===boss)||null,governance=championChallengerReport(intel.forecasts,boss,world);
+   const model=modelPublic(intel.models,world).find(x=>x.boss===boss)||null,governance=championChallengerReport(intel.forecasts,boss,world,'adaptive_ensemble',{modelVersion:MODEL_FAMILY_VERSION});
    return {boss,world,prediction,governance,calibration:calibrationReport(intel.forecasts,world,boss,{modelVersion:MODEL_FAMILY_VERSION}),drift:detectDrift(intel.events,boss,world),events:recent.map(e=>({id:e.id,estimatedAt:e.estimatedAt,status:e.status,qualityStatus:e.qualityStatus,dataQualityScore:e.dataQualityScore,confidence:Math.round((e.confidence||0)*100),sourceCount:e.sourceCount,confirmations:e.confirmations,confirmingSources:e.confirmingSources||[]})),intervals,model};
  }
  return {sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation};
