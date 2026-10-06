@@ -156,7 +156,7 @@ test('push endpoints reject arbitrary hosts and credentialed URLs',()=>{
 });
 
 
-import {ensureSources,sourceWeight,noteSource,canAttemptSource} from './sources/registry.mjs';
+import {ensureSources,sourceWeight,noteSource,canAttemptSource,noteEvidenceOutcome,sourcePublic} from './sources/registry.mjs';
 import {makeObservation} from './normalization/observations.mjs';
 import {mergeObservation} from './deduplication/events.mjs';
 import {predictBoss} from './prediction/engine.mjs';
@@ -347,6 +347,8 @@ test('rate limiter rejects requests above configured window and resets later',()
 
 
 import {assessObservation} from './data-quality/engine.mjs';
+import {predictionReadiness} from './prediction/abstention.mjs';
+import {datasetVersion} from './prediction/version.mjs';
 import {consensusForEvidence} from './consensus/engine.mjs';
 import {calibrationReport,calibrateConfidence} from './learning/calibration.mjs';
 import {detectDrift} from './learning/drift.mjs';
@@ -415,4 +417,63 @@ test('event ledger is append-only hash chained and detects tampering',()=>{
 test('backtest exposes baselines and temporal development validation test cohorts',()=>{
  const H=3600000,events=[];let at=Date.parse('2026-01-01T10:00:00-03:00');for(let i=0;i<30;i++){events.push({id:'tb'+i,boss:'Temporal',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,dataQualityScore:90,evidence:[{precision:'minute'}]});at+=(i>18?66:72)*H;}
  const r=runHistoricalBacktest(events,'Lunarian',{minTrain:5});assert.ok(r.overallModels.some(x=>x.model==='last_interval'));assert.ok(r.overallModels.some(x=>x.model==='recent_mean_10'));assert.ok(r.temporalValidation.development.predictions>0);assert.ok(r.temporalValidation.validation.predictions>0);assert.ok(r.temporalValidation.test.predictions>0);
+});
+
+
+test('consensus marks the explicit 21:42 versus 23:15 minute reports as conflicting',()=>{
+ const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
+ const day='2026-10-06',a=Date.parse(day+'T21:42:00-03:00'),b=Date.parse(day+'T23:15:00-03:00');
+ const mk=(id,source,at)=>{const x=makeObservation({evidenceId:id,boss:'Conflict Boss',world:'Lunarian',sourceId:source,sourceRef:'test://'+source,collectionMethod:'test',eventType:'kill',precision:'minute',estimatedAt:at,processedAt:at+60000,confidence:.9});x.quality={score:90,status:'CONFIRMADO',eligibleForLearning:true};return x;};
+ const c=consensusForEvidence([mk('c-a','manual-panel',a),mk('c-b','whatsapp-group',b)],sources);
+ assert.equal(c.conflict,true);assert.equal(c.status,'CONFLITANTE');assert.equal(c.conflictThresholdMs,45*60000);
+});
+
+test('unknown provenance fields do not receive traceability credit',()=>{
+ const sources=ensureSources({}),at=Date.now();
+ const known=makeObservation({evidenceId:'prov-known',boss:'P',world:'Lunarian',sourceId:'manual-panel',sourceRef:'boss-radar://panel',collectionMethod:'manual_panel',eventType:'kill',precision:'minute',estimatedAt:at,processedAt:at+1000,confidence:.9});
+ const unknown=makeObservation({evidenceId:'prov-unknown',boss:'P',world:'Lunarian',sourceId:'manual-panel',sourceRef:'unknown',collectionMethod:'unknown',eventType:'kill',precision:'minute',estimatedAt:at,processedAt:at+1000,confidence:.9});
+ const a=assessObservation(known,{sources,now:at+1000}),b=assessObservation(unknown,{sources,now:at+1000});
+ assert.ok(a.components.provenance>b.components.provenance);assert.ok(a.score>b.score);
+});
+
+test('recent bad outcomes reduce source reputation and can quarantine an automatic source',()=>{
+ const sources=ensureSources({}),before=sourceWeight(sources.otbosstracker),at=Date.now();
+ for(let i=0;i<8;i++)noteEvidenceOutcome(sources,'otbosstracker',{correct:false,errorMs:6*3600000,precision:'minute',consistency:.1,at:at+i});
+ const after=sourceWeight(sources.otbosstracker),pub=sourcePublic(sources).find(x=>x.id==='otbosstracker');
+ assert.ok(after<before);assert.equal(sources.otbosstracker.circuitState,'OPEN');assert.equal(pub.recentAccuracy,0);assert.equal(pub.averageErrorMinutes,360);
+});
+
+test('coarse daily source records do not contaminate precise average timing error',()=>{
+ const sources=ensureSources({});
+ noteEvidenceOutcome(sources,'otbosstracker',{correct:true,errorMs:12*3600000,precision:'day',consistency:.8,updateCircuit:false});
+ noteEvidenceOutcome(sources,'otbosstracker',{correct:true,errorMs:5*60000,precision:'minute',consistency:.9,updateCircuit:false});
+ const row=sourcePublic(sources).find(x=>x.id==='otbosstracker');
+ assert.equal(row.preciseEvaluatedRecords,1);assert.equal(row.averageErrorMinutes,5);
+});
+
+test('prediction readiness abstains on low quality even with a large history',()=>{
+ const r=predictionReadiness({sampleSize:100,preciseSamples:90,dataQuality:.42,predictionScore:90,anomalyRate:0,agreement:.9,uncertaintyMs:3600000,intervalMedianMs:72*3600000});
+ assert.equal(r.canPredictWindow,false);assert.ok(r.reasons.some(x=>/qualidade dos dados/.test(x)));
+});
+
+test('dataset version changes when an older confirmed event is corrected',()=>{
+ const base=Date.parse('2026-01-01T12:00:00-03:00'),events=[
+  {id:'v1',boss:'Version Boss',world:'Lunarian',eventType:'kill',status:'confirmed_auto',qualityStatus:'CONFIRMADO',estimatedAt:base,updatedAt:base},
+  {id:'v2',boss:'Version Boss',world:'Lunarian',eventType:'kill',status:'confirmed_auto',qualityStatus:'CONFIRMADO',estimatedAt:base+72*3600000,updatedAt:base+72*3600000}
+ ];
+ const before=datasetVersion(events,'Version Boss','Lunarian');events[0].estimatedAt+=5*60000;events[0].updatedAt+=10;const after=datasetVersion(events,'Version Boss','Lunarian');
+ assert.notEqual(before,after);
+});
+
+test('calibration report exposes ECE MCE and Brier without fabricating samples',()=>{
+ const rows=[];for(let i=0;i<40;i++)rows.push({world:'Lunarian',boss:'Metric Boss',resolvedAt:i+1,confidenceRaw:80,confidence:80,windowHit:i<28});
+ const r=calibrationReport(rows,'Lunarian','Metric Boss');
+ assert.equal(r.samples,40);assert.ok(Number.isFinite(r.ece));assert.ok(Number.isFinite(r.mce));assert.ok(Number.isFinite(r.brier));assert.ok(r.brier>=0&&r.brier<=1);
+});
+
+test('champion promotion policy requires at least fifty paired results and material gain',()=>{
+ const base=Date.now(),rows=[];
+ for(let i=0;i<40;i++)rows.push({id:'cp'+i,boss:'Policy Boss',world:'Lunarian',resolvedAt:base+i,errorMinutes:30,windowHit:true,challengers:[{name:'candidate',actualErrorMinutes:5,hit:true}]});
+ const r=championChallengerReport(rows,'Policy Boss','Lunarian');
+ assert.equal(r.minSamples,50);assert.equal(r.promotionRecommended,null);assert.equal(r.promotionPolicy.minimumRelativeMaeImprovementPct,5);
 });
