@@ -21,8 +21,8 @@ export function enrichCandidate(candidate,evidence){
  const rows=(evidence||[]).filter(x=>candidate.evidenceIds.includes(x.id));
  const people=new Set(rows.map(x=>x.authorHash).filter(Boolean));
  candidate.participants=people.size;candidate.messages=rows.length;candidate.score=candidateScore(rows);
- candidate.exactMatches=rows.reduce((n,x)=>n+(x.bossCandidates||[]).some(c=>c.matchType==='EXACT'||c.matchType==='ALIAS')?1:0,0);
- candidate.fuzzyMatches=rows.reduce((n,x)=>n+(x.bossCandidates||[]).some(c=>c.matchType==='FUZZY')?1:0,0);
+ candidate.exactMatches=rows.reduce((n,x)=>n+((x.bossCandidates||[]).some(c=>c.matchType==='EXACT'||c.matchType==='ALIAS')?1:0),0);
+ candidate.fuzzyMatches=rows.reduce((n,x)=>n+((x.bossCandidates||[]).some(c=>c.matchType==='FUZZY')?1:0),0);
  candidate.contexts=Object.fromEntries([...new Set(rows.map(x=>x.contextClassification))].map(k=>[k,rows.filter(x=>x.contextClassification===k).length]));
  candidate.estimatedAt=rows.filter(x=>pos.has(x.contextClassification)).map(x=>x.messageTimestamp).filter(Number.isFinite).sort((a,b)=>a-b)[0]||candidate.firstEvidenceAt;
  return candidate;
