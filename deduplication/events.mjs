@@ -10,8 +10,10 @@ export function recomputeEvent(event,sources){
   const sourceIds=new Set();
   for(const x of evidence){const s=sources[x.sourceId],w=(s?.effectiveWeight??s?.baseWeight??.6)*x.confidence;miss*=1-clamp(w);sourceIds.add(x.sourceId);weightedAt+=x.estimatedAt*w;total+=w;min=Math.min(min,x.startAt);max=Math.max(max,x.endAt);manual||=x.manual;}
   const base=1-miss,span=Math.max(0,max-min),penalty=span<=45*60000?1:span<=3*3600000?.96:span<=24*3600000?.88:.78;
-  event.confidence=clamp(base*penalty);event.startAt=min;event.endAt=max;event.estimatedAt=total?Math.round(weightedAt/total):Math.round((min+max)/2);event.sourceCount=sourceIds.size;event.confirmations=evidence.length;
-  event.status=manual&&event.eventType!=='absence'?'confirmed_manual':event.sourceCount>=2&&event.confidence>=.86&&event.eventType!=='absence'?'confirmed_auto':event.confidence>=.55?'probable':'unconfirmed';
+  const anomalous=evidence.filter(x=>x.anomaly).length,anomalyPenalty=anomalous===evidence.length?.55:anomalous?Math.max(.7,1-anomalous/evidence.length*.25):1;
+  event.confidence=clamp(base*penalty*anomalyPenalty);event.startAt=min;event.endAt=max;event.estimatedAt=total?Math.round(weightedAt/total):Math.round((min+max)/2);event.sourceCount=sourceIds.size;event.confirmations=evidence.length;
+  event.anomaly=anomalous?evidence.find(x=>x.anomaly)?.anomaly||null:null;
+  event.status=manual&&event.eventType!=='absence'?'confirmed_manual':anomalous===evidence.length?'probable':event.sourceCount>=2&&event.confidence>=.86&&event.eventType!=='absence'?'confirmed_auto':event.confidence>=.55?'probable':'unconfirmed';
   event.updatedAt=Date.now();return event;
 }
 export function mergeObservation(events,o,sources){
