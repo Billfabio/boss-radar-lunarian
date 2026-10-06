@@ -193,7 +193,7 @@ test('anomaly detector flags implausibly early repeat appearances',()=>{
   {boss:'Ferumbras',world:'Lunarian',eventType:'kill',estimatedAt:base+144*3600000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]}
  ];
  const prediction=predictBoss(events,'Ferumbras','Lunarian');
- const obs=makeObservation({evidenceId:'too-soon',boss:'Ferumbras',world:'Lunarian',sourceId:'whatsapp-group',eventType:'appearance',precision:'minute',estimatedAt:base+145*3600000,confidence:.8});
+ const obsAt=base+145*3600000;const obs=makeObservation({evidenceId:'too-soon',boss:'Ferumbras',world:'Lunarian',sourceId:'whatsapp-group',eventType:'appearance',precision:'minute',estimatedAt:obsAt,sourceObservedAt:obsAt,processedAt:obsAt+60000,reportedAt:obsAt+60000,collectedAt:obsAt+60000,confidence:.8});
  assert.equal(anomalyFor(obs,events,prediction)?.kind,'too_soon');
 });
 
