@@ -6,13 +6,13 @@ const DAY=86400000,HOUR=3600000,clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const q=(arr,p)=>{if(!arr.length)return null;const a=[...arr].sort((x,y)=>x-y),x=(a.length-1)*p,i=Math.floor(x),f=x-i;return a[i]+((a[i+1]??a[i])-a[i])*f;};
 const median=a=>q(a,.5);
 const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&['appearance','kill'].includes(e.eventType);
-const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision));
+const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
 const rowsFor=(events,boss,world)=>events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
 const intervals=rows=>rows.slice(1).map((e,i)=>e.estimatedAt-rows[i].estimatedAt).filter(x=>x>HOUR&&x<180*DAY);
 function sourceUsage(rows){
  const map=new Map();
  for(const event of rows)for(const x of event.evidence||[]){
-  if(['DESCARTADO','SUSPEITO'].includes(x.quality?.status)||x.anomaly)continue;
+  if((x.quality&&!['CONFIRMADO','PROVÁVEL'].includes(x.quality.status))||x.anomaly)continue;
   const row=map.get(x.sourceId)||{sourceId:x.sourceId,records:0,preciseRecords:0,qualitySum:0,qualitySamples:0,refs:new Set()};
   row.records++;if(['minute','hour'].includes(x.precision))row.preciseRecords++;if(Number.isFinite(x.quality?.score)){row.qualitySum+=x.quality.score;row.qualitySamples++;}if(x.sourceRef)row.refs.add(String(x.sourceRef));map.set(x.sourceId,row);
  }
