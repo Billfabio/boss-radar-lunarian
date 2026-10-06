@@ -251,6 +251,9 @@ test('WhatsApp streams newly accepted records to intelligence callback immediate
 import {runHistoricalBacktest} from './backtest/history.mjs';
 import {TaskQueue} from './runtime/task-queue.mjs';
 import {buildHealth} from './runtime/health.mjs';
+import {recalculateForecastOutcome,rebuildBossModel} from './learning/model-performance.mjs';
+import {issueSession,validSession} from './security/session.mjs';
+import {RateLimiter} from './security/rate-limit.mjs';
 
 test('daily observations on consecutive days remain separate events',()=>{
  const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
@@ -310,4 +313,34 @@ test('forecast metrics flags significant recent deterioration only with enough e
  for(let i=0;i<6;i++)rows.push({world:'Lunarian',boss:'D',resolvedAt:now-i*86400000,windowHit:i===0,errorMinutes:40});
  const m=forecastMetrics(rows,'Lunarian',now);
  assert.equal(m.deterioration?.detected,true);assert.ok(m.deterioration.accuracyDrop>=15);
+});
+
+
+test('resolved forecast outcome is recalculated when actual event time is corrected',()=>{
+ const base=Date.parse('2026-10-01T20:00:00-03:00'),forecast={id:'corr-f',boss:'Corr',world:'Lunarian',baseEventId:'before',baseEventAt:base-72*3600000,createdAt:base-71*3600000,resolvedAt:base+1000,windowStart:base-3600000,windowEnd:base+3600000,predictedCenterAt:base,likelyAt:base,methods:[{name:'recent_interval',predictedAt:base}]};
+ const models={},first={id:'actual-corr',boss:'Corr',world:'Lunarian',eventType:'kill',estimatedAt:base+30*60000,startAt:base+30*60000,endAt:base+30*60000,status:'confirmed_manual',evidence:[{precision:'minute'}]};
+ recalculateForecastOutcome(forecast,first);rebuildBossModel([forecast],models,'Corr','Lunarian');
+ const before=forecast.errorMinutes;
+ const corrected={...first,estimatedAt:base+5*60000,startAt:base+5*60000,endAt:base+5*60000,evidence:[{precision:'minute',manual:true,detail:{correction:true}}]};
+ recalculateForecastOutcome(forecast,corrected);rebuildBossModel([forecast],models,'Corr','Lunarian');
+ assert.equal(before,30);assert.equal(forecast.errorMinutes,5);assert.equal(models['Lunarian|corr'].methods.recent_interval.emaErrorMinutes,5);
+});
+
+test('day-only resolved forecast never fabricates minute error',()=>{
+ const base=Date.parse('2026-10-01T12:00:00-03:00'),forecast={id:'day-f',boss:'Day',world:'Lunarian',baseEventId:'before',baseEventAt:base-72*3600000,createdAt:base-71*3600000,resolvedAt:base+1000,windowStart:base-6*3600000,windowEnd:base+6*3600000,predictedCenterAt:base,methods:[{name:'historical_interval',predictedAt:base}]};
+ const event={id:'day-real',boss:'Day',world:'Lunarian',eventType:'kill',estimatedAt:base,startAt:Date.parse('2026-10-01T00:00:00-03:00'),endAt:Date.parse('2026-10-01T23:59:59-03:00'),status:'confirmed_auto',evidence:[{precision:'day'}]};
+ recalculateForecastOutcome(forecast,event);
+ assert.equal(forecast.errorMinutes,null);assert.equal(forecast.actualPrecision,'day');assert.equal(forecast.methods[0].actualErrorMinutes,null);
+});
+
+test('signed public session expires and changes with password',()=>{
+ const now=Date.now(),cookie=issueSession('abcdefghijkl',now,1000);
+ assert.equal(validSession('boss_session='+cookie,'abcdefghijkl',now+500),true);
+ assert.equal(validSession('boss_session='+cookie,'abcdefghijkl',now+2000),false);
+ assert.equal(validSession('boss_session='+cookie,'mnopqrstuvwx',now+500),false);
+});
+
+test('rate limiter rejects requests above configured window and resets later',()=>{
+ const limiter=new RateLimiter({windowMs:1000,max:2});
+ assert.equal(limiter.check('ip',0).allowed,true);assert.equal(limiter.check('ip',1).allowed,true);assert.equal(limiter.check('ip',2).allowed,false);assert.equal(limiter.check('ip',1001).allowed,true);
 });
