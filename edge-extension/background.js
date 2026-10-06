@@ -11,7 +11,8 @@ function makeSalt(){const a=new Uint8Array(24);crypto.getRandomValues(a);return 
 async function getQueue(){const {evidenceQueue=[]}=await chrome.storage.local.get('evidenceQueue'),now=Date.now();return evidenceQueue.filter(x=>now-(x.queuedAt||now)<=QUEUE_TTL);}
 async function enqueueEvidence(rows=[]){let queue=await getQueue();const seen=new Set(queue.map(x=>x.messageFingerprint));let dup=0;for(const row of rows){if(seen.has(row.messageFingerprint)){dup++;continue;}if(queue.length>=MAX_QUEUE){await setStatus('DEGRADED','Fila local cheia; coleta pausada para não perder evidências.');throw new Error('Fila local atingiu o limite de '+MAX_QUEUE+' evidências.');}queue.push({...row,queuedAt:Date.now()});seen.add(row.messageFingerprint);}await chrome.storage.local.set({evidenceQueue:queue});if(dup){await addMetrics({duplicates:dup});await technicalLog('DUPLICATE_IGNORED',{count:dup});}if(rows.length-dup)await technicalLog('EVIDENCE_QUEUED',{count:rows.length-dup,size:queue.length});return {queued:rows.length-dup,duplicates:dup,size:queue.length};}
 let flushing=false;
-async function scheduleRetry(attempt){const minutes=Math.min(16,Math.pow(2,Math.min(4,Math.max(0,attempt))));await chrome.storage.local.set({retryAttempt:attempt,retryAt:Date.now()+minutes*60000});chrome.alarms.create('queue-retry',{delayInMinutes:minutes});}
+function jitterFactor(){const a=new Uint32Array(1);crypto.getRandomValues(a);return .85+(a[0]/4294967295)*.3;}
+async function scheduleRetry(attempt){const base=Math.min(16,Math.pow(2,Math.min(4,Math.max(0,attempt)))),minutes=Math.max(.5,base*jitterFactor());await chrome.storage.local.set({retryAttempt:attempt,retryAt:Date.now()+minutes*60000});chrome.alarms.create('queue-retry',{delayInMinutes:minutes});}
 async function flushQueue(){
  if(flushing)return;flushing=true;
  try{
@@ -23,7 +24,7 @@ async function flushQueue(){
 }
 async function heartbeat(extra={}){
  const {config,paused,collectorMetrics={},evidenceQueue=[]}=await chrome.storage.local.get(['config','paused','collectorMetrics','evidenceQueue']);if(!config)return;
- const status=paused?'PAUSED':extra.status||'CONNECTED';try{await request('/extension/heartbeat',{group:GROUP,status,extensionVersion:VERSION,queueSize:evidenceQueue.length,metrics:collectorMetrics,diagnostics:extra.diagnostics||null},config.key,config.serviceURL);if(!paused&&status==='CONNECTED')await setStatus('CONNECTED','Lunarian Collector ativo.');}catch(e){await addMetrics({errors:1,requests:1});await setStatus('BACKEND_OFFLINE','Boss Radar offline; fila local preservada.');}
+ const status=paused?'PAUSED':extra.status||'CONNECTED';const heartbeatAt=Date.now();await chrome.storage.local.set({lastHeartbeatLocalAt:heartbeatAt});try{await request('/extension/heartbeat',{group:GROUP,status,extensionVersion:VERSION,queueSize:evidenceQueue.length,metrics:collectorMetrics,diagnostics:extra.diagnostics||null},config.key,config.serviceURL);if(!paused&&status==='CONNECTED')await setStatus('CONNECTED','Lunarian Collector ativo.');}catch(e){await addMetrics({errors:1,requests:1});await setStatus('BACKEND_OFFLINE','Boss Radar offline; fila local preservada.');}
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  const local=!sender.tab&&sender.url?.startsWith(chrome.runtime.getURL('')),web=sender.tab?.url?.startsWith('https://web.whatsapp.com/');
