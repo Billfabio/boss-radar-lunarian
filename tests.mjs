@@ -477,3 +477,12 @@ test('champion promotion policy requires at least fifty paired results and mater
  const r=championChallengerReport(rows,'Policy Boss','Lunarian');
  assert.equal(r.minSamples,50);assert.equal(r.promotionRecommended,null);assert.equal(r.promotionPolicy.minimumRelativeMaeImprovementPct,5);
 });
+
+
+test('robust anomaly detector quarantines an extreme late interval after stable history',()=>{
+ const H=3600000,base=Date.parse('2026-01-01T12:00:00-03:00'),events=[];
+ for(let i=0;i<12;i++)events.push({id:'late-'+i,boss:'Late Boss',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,evidence:[{precision:'minute'}]});
+ const obs=makeObservation({evidenceId:'late-outlier',boss:'Late Boss',world:'Lunarian',sourceId:'whatsapp-group',eventType:'kill',precision:'minute',estimatedAt:events.at(-1).estimatedAt+300*H,confidence:.8});
+ const anomaly=anomalyFor(obs,events,null);
+ assert.equal(anomaly?.kind,'interval_outlier_late');assert.ok(anomaly.thresholdMs<anomaly.deltaMs);
+});
