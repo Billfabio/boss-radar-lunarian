@@ -40,7 +40,7 @@ async function load(){
 function render(){
   const all=bosses(); const now=Date.now();
   $('world').innerHTML=model.worlds.map(w=>`<option ${w===model.settings.world?'selected':''}>${safe(w)}</option>`).join('');
-  $('sync').textContent=model.data?`${model.data.catalogOnly?'Catálogo carregado':'Atualizado'} ${format(model.data.fetchedAt)}`:'Fonte ainda não carregada';
+  $('sync').textContent=model.data?(model.data.stale?`Dados preservados de ${format(model.data.staleFrom||model.data.fetchedAt)}`:`${model.data.catalogOnly?'Catálogo carregado':'Atualizado'} ${format(model.data.fetchedAt)}`):'Fonte ainda não carregada';
   $('source-warning').hidden=!model.error;
   $('source-warning').textContent=model.error?'Não foi possível atualizar as previsões. Os dados anteriores podem estar desatualizados; os novos alertas estão suspensos até a atualização voltar a funcionar.':'';
   $('high-count').textContent=model.error?'—':all.filter(b=>status(b.prediction,now)==='high').length;
