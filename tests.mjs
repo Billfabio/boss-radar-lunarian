@@ -486,3 +486,25 @@ test('robust anomaly detector quarantines an extreme late interval after stable 
  const anomaly=anomalyFor(obs,events,null);
  assert.equal(anomaly?.kind,'interval_outlier_late');assert.ok(anomaly.thresholdMs<anomaly.deltaMs);
 });
+
+
+test('untraceable evidence is quarantined and never eligible for learning',()=>{
+ const sources=ensureSources({}),at=Date.now()-60000;
+ const obs=makeObservation({evidenceId:'no-origin',boss:'Trace Boss',world:'Lunarian',sourceId:'manual-panel',eventType:'kill',precision:'minute',estimatedAt:at,confidence:.95});
+ const q=assessObservation(obs,{sources,now:Date.now()});
+ assert.equal(q.traceable,false);assert.equal(q.eligibleForLearning,false);assert.equal(q.status,'AGUARDANDO_CONFIRMAÇÃO');assert.ok(q.score<=69);
+});
+
+test('walk-forward calibration never uses future outcomes from another boss',()=>{
+ const H=3600000,events=[],early=Date.parse('2026-01-01T12:00:00-03:00'),late=Date.parse('2026-06-01T12:00:00-03:00');
+ for(let i=0;i<28;i++)events.push({id:'z-'+i,boss:'Z Early',world:'Lunarian',eventType:'kill',estimatedAt:early+i*72*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',dataQualityScore:90,confidence:.9,evidence:[{precision:'minute'}]});
+ for(let i=0;i<35;i++)events.push({id:'a-'+i,boss:'A Late',world:'Lunarian',eventType:'kill',estimatedAt:late+i*72*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',dataQualityScore:90,confidence:.9,evidence:[{precision:'minute'}]});
+ const r=runHistoricalBacktest(events,'Lunarian',{minTrain:6});
+ const firstEarly=r.recentResults.filter(x=>x.boss==='Z Early'&&x.model==='adaptive_ensemble').sort((a,b)=>a.actualAt-b.actualAt)[0];
+ assert.ok(firstEarly);assert.equal(firstEarly.calibrationSamples,0);
+});
+
+test('health reports storage failure separately from API availability and recovery count',()=>{
+ const h=buildHealth({lastPoll:Date.now(),lastCollectionAt:Date.now(),lastPredictionAt:Date.now(),queue:{},sources:[],whatsapp:{connected:true},clients:0,storage:{lastSuccessAt:Date.now()-1000,lastError:'disk full',recoveryCount:2}});
+ assert.equal(h.services.api.status,'ONLINE');assert.equal(h.services.storage.status,'ERRO');assert.equal(h.services.storage.lastError,'disk full');assert.equal(h.services.storage.recoveryCount,2);
+});
