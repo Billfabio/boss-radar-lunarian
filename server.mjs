@@ -190,7 +190,7 @@ function validSettings(input) {
   }
   return result;
 }
-const whatsapp=createWhatsAppSync({state,persist,broadcast,names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
+const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),investigate:async()=>{try{await refresh(true);}catch{}},saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
@@ -208,7 +208,7 @@ const server=http.createServer(async(req,res)=>{
       }
       return json(res,405,{error:'Método não permitido'});
     }
-    if(url.pathname.startsWith('/extension/')){if(await whatsapp.handle(req,res,url))return;}
+    if(url.pathname.startsWith('/extension/')||url.pathname==='/api/community/evidence'){if(await whatsapp.handle(req,res,url))return;}
     if(AUTH_REQUIRED&&!validSession(req.headers.cookie,SITE_PASSWORD)){res.writeHead(303,{Location:'/login','Cache-Control':'no-store'});res.end();return;}
     const rate=apiLimiter.check(remote);if(!rate.allowed)return json(res,429,{error:'Limite temporário de requisições excedido'});
     if(req.method==='POST') {
