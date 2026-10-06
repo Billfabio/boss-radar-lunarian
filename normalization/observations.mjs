@@ -14,7 +14,8 @@ export function makeObservation(input){
   if(!Number.isFinite(startAt)&&Number.isFinite(estimatedAt))startAt=precision==='day'?Date.parse(localDate(estimatedAt)+'T00:00:00-03:00'):estimatedAt;
   if(!Number.isFinite(endAt)&&Number.isFinite(estimatedAt))endAt=precision==='day'?Date.parse(localDate(estimatedAt)+'T23:59:59-03:00'):estimatedAt;
   if(!Number.isFinite(startAt)||!Number.isFinite(endAt)||endAt<startAt)throw new Error('Observação sem intervalo temporal válido');
-  const processedAt=Number(input.processedAt)||Date.now(),reportedAt=Number(input.reportedAt)||processedAt,sourceObservedAt=Number(input.sourceObservedAt)||Number.isFinite(estimatedAt)?Number(input.sourceObservedAt)||estimatedAt:reportedAt,collectedAt=Number(input.collectedAt)||reportedAt;
+  const processedAt=Number(input.processedAt)||Date.now(),reportedAt=Number(input.reportedAt)||processedAt;
+  const sourceObservedAt=Number.isFinite(Number(input.sourceObservedAt))?Number(input.sourceObservedAt):(Number.isFinite(estimatedAt)?estimatedAt:reportedAt),collectedAt=Number(input.collectedAt)||reportedAt;
   return {evidenceId:String(input.evidenceId),boss:String(input.boss),world:String(input.world),sourceId:String(input.sourceId),sourceRef:String(input.sourceRef||input.detail?.sourceRef||''),collectionMethod:String(input.collectionMethod||input.detail?.collectionMethod||'unknown'),confirmedBy:input.confirmedBy?String(input.confirmedBy).slice(0,120):null,eventType,precision,startAt,endAt,estimatedAt:Number.isFinite(estimatedAt)?estimatedAt:Math.round((startAt+endAt)/2),sourceObservedAt,collectedAt,reportedAt,processedAt,manual:!!input.manual,confidence:Math.max(.05,Math.min(1,Number(input.confidence)||.5)),detail:input.detail||null};
 }
 export function publicHistoryObservation(world,boss,row,index){
