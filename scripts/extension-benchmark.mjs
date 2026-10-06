@@ -12,6 +12,7 @@ const messages=Array.from({length:6000},(_,i)=>i%20===0?names[i%names.length]+' 
 function measure(fn){global.gc?.();const before=process.memoryUsage().heapUsed,t0=performance.now();let matches=0;for(const msg of messages)if(fn(msg))matches++;const ms=performance.now()-t0;global.gc?.();return {ms:Math.round(ms*10)/10,matches,heapDeltaBytes:Math.max(0,process.memoryUsage().heapUsed-before),perMessageUs:Math.round(ms/messages.length*10000)/10};}
 for(let i=0;i<2;i++){measure(oldMatch);measure(x=>core.match(x,compiled)[0]||null);}
 const before=measure(oldMatch),after=measure(x=>core.match(x,compiled)[0]||null);
-const result={kind:'synthetic-extension-filter-benchmark',messages:messages.length,bosses:names.length,before:{algorithm:'legacy normalized includes across boss names',...before},after:{algorithm:'compiled exact/alias + trigram-prefiltered fuzzy',...after},architecture:{legacyPollingSeconds:20,currentMutationObserver:true,watchdogSeconds:60}};
+const result={kind:'synthetic-extension-filter-benchmark',messages:messages.length,bosses:names.length,before:{algorithm:'legacy normalized includes across boss names',...before},after:{algorithm:'compiled exact/alias + shape-indexed fuzzy',...after},architecture:{legacyPollingSeconds:20,currentMutationObserver:true,watchdogSeconds:60}};
 console.log(JSON.stringify(result));
-if(after.perMessageUs>5000)throw new Error('Collector matcher excedeu 5 ms por mensagem no benchmark sintético.');
+if(after.perMessageUs>250)throw new Error('Collector matcher excedeu 250 µs por mensagem no benchmark sintético.');
+if(after.matches<before.matches)throw new Error('Collector otimizado perdeu recall em relação ao filtro legado no benchmark sintético.');
