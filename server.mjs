@@ -13,6 +13,9 @@ import { randomBytes } from 'node:crypto';
 import { WORLDS, uniqueHistory, dueAlert,status } from './logic.mjs';
 import { createVapid, sendPush, allowedEndpoint } from './push.mjs';
 import { createIntelligence } from './intelligence/service.mjs';
+import { TaskQueue } from './runtime/task-queue.mjs';
+import { buildHealth } from './runtime/health.mjs';
+import { createStructuredLogger } from './observability/logger.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -31,6 +34,7 @@ let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
 const sessionToken = randomBytes(32).toString('hex');
+const heavyQueue=new TaskQueue({concurrency:1,maxPending:8});
 let persistQueue = Promise.resolve();
 function persist() {
   const snapshot=JSON.stringify(state);
@@ -38,7 +42,7 @@ function persist() {
   return persistQueue;
 }
 const cache=new Map();
-let refreshPromise=null, lastError=null, monitoring=false, lastPoll=null;
+let refreshPromise=null, lastError=null, monitoring=false, lastPoll=null, lastCollectionAt=null;
 let catalog=[];
 try {catalog=JSON.parse(await readFile(join(DATA,'catalog.json'),'utf8'));} catch(e) {if(e.code!=='ENOENT') throw e;}
 const clients=new Set();
@@ -54,6 +58,7 @@ async function refreshCharacter(input=CHARACTER_NAME,force=false){
 }
 function broadcast(type, data) { for (const res of clients) res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); }
 const intelligence=createIntelligence({state,persist,broadcast});
+const structured=createStructuredLogger({state,persist});
 await intelligence.bootstrapChecks([...state.checks,...state.groupChecks]);
 async function refresh(force=false) {
   const world=state.settings.world;
@@ -87,7 +92,7 @@ async function refresh(force=false) {
       state.officialHistory[capturedWorld]=history.slice(-10800);
       await persist();
     }catch(e){intelligence.sourceAttempt('rubinot-official',{ok:false,error:e.message});result.officialError=`Estatísticas oficiais indisponíveis: ${e.message}`;}
-    cache.set(capturedWorld,result); lastError=null; broadcast('update',{world:capturedWorld}); return result;
+    cache.set(capturedWorld,result); lastCollectionAt=Date.now();lastError=null; broadcast('update',{world:capturedWorld}); return result;
   })();
   try { return await refreshPromise; } catch(e) { lastError=e.message; throw e; } finally { refreshPromise=null; }
 }
@@ -196,6 +201,7 @@ const server=http.createServer(async(req,res)=>{
         if(typeof input.batchId!=='string')throw new Error('Rodada inválida');const removed=state.groupChecks.filter(c=>c.batchId===input.batchId);await intelligence.removeChecks(removed);state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await persist();broadcast('update',{});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
+      if(url.pathname==='/api/intelligence/backtest'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;const result=await heavyQueue.enqueue('backtest:'+world,async()=>intelligence.backtest(world));return json(res,200,result);}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {
@@ -211,6 +217,8 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/boss-maps'){const name=url.searchParams.get('name'),boss=catalog.find(b=>b.name===name)||bosstiary.find(b=>b.name===name);if(!boss)throw new Error('Boss desconhecido');let result=mapCache.get(name);if(!result||Date.now()-result.at>3600000){result={...await fetchBossMaps(name,boss.locations||[]),at:Date.now()};mapCache.set(name,result);}return json(res,200,result);}
     if(url.pathname==='/api/group-image'){const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))throw new Error('Imagem inválida');const image=state.whatsapp.images.find(i=>i.id===id);if(!image)return json(res,404,{error:'Imagem não encontrada'});const bytes=await readFile(join(DATA,'group-images',id));res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(bytes);return;}
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
+    if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',errors24h:structured.errorsSince(86400000).length}));}
+    if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
     if(url.pathname==='/api/characters')return json(res,200,{names:state.characters});
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
@@ -237,7 +245,7 @@ const server=http.createServer(async(req,res)=>{
     const content=await readFile(join(ROOT,files[url.pathname]));
     const type=url.pathname.endsWith('.css')?'text/css':url.pathname==='/'?'text/html':'application/javascript';
     res.writeHead(200,{'Content-Type':type+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://cdn.rubinottools.com https://www.tibiawiki.com.br; connect-src 'self'; frame-src https://tibiamaps.io; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"}); res.end(content);
-  } catch(e) { json(res,400,{error:e.message}); }
+  } catch(e) { const traceId=randomBytes(8).toString('hex');await structured.write('error','request',e.message,{method:req.method,url:req.url},traceId).catch(()=>{});json(res,400,{error:e.message,traceId}); }
 });
 server.listen(PORT,'127.0.0.1',()=>{console.log(`Boss Radar: ${ORIGIN}\nMantenha esta janela aberta para monitorar e enviar alertas.\nA previsão é uma janela de checagem; não garante spawn.`); void poll();});
 setInterval(()=>void poll(),60000).unref();
