@@ -46,3 +46,18 @@ Manifest V3; CSP sem scripts remotos; permissões obrigatórias limitadas a stor
 - identificador @g.us não é garantido em toda versão do DOM, portanto existe fallback controlado pelo nome;
 - profiling real de CPU/memória ainda precisa ser executado no navegador alvo;
 - métricas mensagem→captura são aproximadas porque o timestamp visível pode ter precisão apenas de minuto.
+## Benchmark final validado no CI
+Commit de implementação validado: 312e617ded9c0a6d4e4bb374faebc7e35e9a9607.
+
+Benchmark sintético: 6.000 mensagens e 333 bosses.
+
+- filtro legado simples: 152,3 ms total; 25,4 µs/mensagem; 372 matches;
+- primeira versão fuzzy auditada: 6.652,3 ms total; 1.108,7 µs/mensagem;
+- versão 1.5 otimizada final: 336,1 ms total; 56 µs/mensagem; 588 matches;
+- redução de aproximadamente 95% no custo por mensagem em relação à primeira versão fuzzy auditada;
+- aproximadamente 58% mais matches que o filtro legado no cenário sintético, devido a aliases/fuzzy;
+- heap delta sintético da execução atual: 12.656 bytes; este número não substitui profiling real do Chrome/WhatsApp.
+
+O CI agora reprova o matcher se ultrapassar 250 µs/mensagem nesse benchmark ou se perder recall em relação ao filtro legado.
+
+Validação final: 95 arquivos JavaScript/MJS verificados; 160 testes executados; 160 aprovados; 0 falhas. Regression gate, load benchmark, fault injection, benchmark Lunarian, build, smoke e Wrangler dry-run passaram.
