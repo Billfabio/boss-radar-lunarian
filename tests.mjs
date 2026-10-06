@@ -413,6 +413,6 @@ test('event ledger is append-only hash chained and detects tampering',()=>{
 });
 
 test('backtest exposes baselines and temporal development validation test cohorts',()=>{
- const H=3600000,base=Date.parse('2026-01-01T10:00:00-03:00'),events=[];for(let i=0;i<30;i++)events.push({id:'tb'+i,boss:'Temporal',world:'Lunarian',eventType:'kill',estimatedAt:base+i*(72-(i>18?6:0))*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,dataQualityScore:90,evidence:[{precision:'minute'}]});
+ const H=3600000,events=[];let at=Date.parse('2026-01-01T10:00:00-03:00');for(let i=0;i<30;i++){events.push({id:'tb'+i,boss:'Temporal',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,dataQualityScore:90,evidence:[{precision:'minute'}]});at+=(i>18?66:72)*H;}
  const r=runHistoricalBacktest(events,'Lunarian',{minTrain:5});assert.ok(r.overallModels.some(x=>x.model==='last_interval'));assert.ok(r.overallModels.some(x=>x.model==='recent_mean_10'));assert.ok(r.temporalValidation.development.predictions>0);assert.ok(r.temporalValidation.validation.predictions>0);assert.ok(r.temporalValidation.test.predictions>0);
 });
