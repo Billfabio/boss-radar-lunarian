@@ -14,6 +14,7 @@ export function mergeEvidence(candidates,evidence,{windowMs=15*MIN}={}){
  const boss=evidence.bossCandidates?.[0]?.name;if(!boss)return null;
  const at=Number(evidence.messageTimestamp)||Number(evidence.capturedTimestamp)||Date.now();
  let c=candidates.find(x=>x.status==='PENDING'&&x.world===evidence.world&&x.boss===boss&&Math.abs((x.lastEvidenceAt||x.firstEvidenceAt)-at)<=windowMs);
+ if(!c&&!pos.has(evidence.contextClassification))return null;
  if(!c){c={id:'cand-'+digest([evidence.world,boss,Math.floor(at/windowMs)].join('|')).slice(0,24),boss,world:evidence.world,status:'PENDING',firstEvidenceAt:at,lastEvidenceAt:at,evidenceIds:[],createdAt:Date.now(),updatedAt:Date.now(),investigation:{status:'PENDING'}};candidates.unshift(c);}
  if(!c.evidenceIds.includes(evidence.id))c.evidenceIds.push(evidence.id);
  c.firstEvidenceAt=Math.min(c.firstEvidenceAt,at);c.lastEvidenceAt=Math.max(c.lastEvidenceAt,at);c.updatedAt=Date.now();return c;
