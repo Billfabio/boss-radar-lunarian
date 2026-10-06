@@ -7,7 +7,7 @@ const sourceState=s=>!s.active?'PREPARADO':s.circuitState==='OPEN'?'QUARENTENA':
 const periods=[['days7','7 dias'],['days30','30 dias'],['days90','90 dias'],['all','Histórico total']];
 export function renderIntelligence(model){
  const root=document.getElementById('intelligence-content');if(!root)return;
- const intel=model.intelligence||{},m=intel.metrics||{},perf=intel.performance||{},preds=intel.predictions||[],sources=intel.sources||[],events=intel.events||[],models=intel.models||[],trust=intel.trustCenter||{},quality=trust.quality||{},cal=trust.calibration||{},obs=intel.observability||{};
+ const intel=model.intelligence||{},m=intel.metrics||{},perf=intel.performance||{},perfAll=intel.performanceAllVersions||{},preds=intel.predictions||[],sources=intel.sources||[],events=intel.events||[],models=intel.models||[],trust=intel.trustCenter||{},quality=trust.quality||{},cal=trust.calibration||{},obs=intel.observability||{};
  root.innerHTML=`
  <section class="intel-kpis">
   <article><span>CONFIANÇA MÉDIA</span><strong>${m.averageConfidence==null?'—':esc(m.averageConfidence)+'%'}</strong><small>${esc(m.bossesModeled||0)} bosses modelados</small></article>
@@ -23,6 +23,8 @@ export function renderIntelligence(model){
   <article><span>DRIFT</span><strong>${esc((trust.drifts||[]).length)}</strong><small>Bosses com mudança de padrão</small></article>
  </div>
  <p class="muted">Engine ${esc(trust.engineVersion||'—')} · modelo ${esc(trust.modelVersion||'—')} · ledger ${trust.ledger?.valid?'íntegro':'ATENÇÃO'} (${esc(trust.ledger?.entries||0)} eventos imutáveis).</p>
+ <p class="muted">Métricas atuais usam somente a versão ativa. 30 dias: ${perf.days30?.predictions||0} previsões · ${perf.days30?.windowAccuracy==null?'—':esc(perf.days30.windowAccuracy)+'%'} acerto · ${perf.days30?.maeMinutes==null?'—':'±'+esc(perf.days30.maeMinutes)+' min'}. Histórico de todas as versões: ${perfAll.days30?.predictions||0} previsões · ${perfAll.days30?.windowAccuracy==null?'—':esc(perfAll.days30.windowAccuracy)+'%'}.</p>
+ ${(trust.algorithmChanges||[]).length?'<details><summary>Últimas mudanças do algoritmo</summary>'+(trust.algorithmChanges||[]).map(x=>'<p>'+dt(x.at)+' · '+esc(x.payload?.fromEngine||'inicial')+' / '+esc(x.payload?.fromModel||'inicial')+' → <b>'+esc(x.payload?.toEngine||'—')+' / '+esc(x.payload?.toModel||'—')+'</b></p>').join('')+'</details>':''}
  ${(trust.alerts||[]).length?'<div class="trust-alerts">'+trust.alerts.map(a=>'<div class="notice"><b>'+esc(a.severity?.toUpperCase()||'ALERTA')+'</b> · '+esc(a.message)+'</div>').join('')+'</div>':'<p class="muted">Nenhum alerta interno de confiança ativo.</p>'}
  <h3>Calibração da confiança</h3><p class="muted">ECE: ${cal.ece==null?'—':esc(cal.ece)+' p.p.'} · MCE: ${cal.mce==null?'—':esc(cal.mce)+' p.p.'} · Brier: ${cal.brier==null?'—':esc(cal.brier)}</p><div class="table-wrap"><table class="ranking-table intelligence-table"><thead><tr><th>Faixa prevista</th><th>Amostras</th><th>Confiança média</th><th>Acerto real</th><th>Diferença</th></tr></thead><tbody>
  ${(cal.bins||[]).map(b=>'<tr><td>'+esc(b.range)+'</td><td>'+esc(b.samples)+'</td><td>'+(b.expected==null?'—':esc(b.expected)+'%')+'</td><td>'+(b.actual==null?'—':esc(b.actual)+'%')+'</td><td>'+(b.gap==null?'—':esc(b.gap)+' p.p.')+'</td></tr>').join('')||'<tr><td colspan="5">Ainda não há previsões resolvidas suficientes para calibrar a confiança.</td></tr>'}
