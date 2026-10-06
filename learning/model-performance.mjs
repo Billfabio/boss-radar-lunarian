@@ -18,7 +18,7 @@ export function adaptiveMethodWeight(models,boss,world,name,scaleMinutes=1440){
  return clamp((.35+.65*experience)*(.35+.4*errorScore+.25*hit),.12,1.35);
 }
 export function recalculateForecastOutcome(forecast,event){
- const actual=event.estimatedAt,precise=(event.evidence||[]).some(x=>['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction);
+ const actual=event.estimatedAt,precise=(event.evidence||[]).some(x=>(['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
  forecast.actualEventId=event.id;forecast.actualAt=actual;forecast.actualPrecision=precise?'time':'day';
  forecast.windowHit=precise?actual>=forecast.windowStart&&actual<=forecast.windowEnd:Math.max(event.startAt||actual,forecast.windowStart)<=Math.min(event.endAt||actual,forecast.windowEnd);
  const center=Number.isFinite(forecast.likelyAt)?forecast.likelyAt:(Number.isFinite(forecast.predictedCenterAt)?forecast.predictedCenterAt:null);
