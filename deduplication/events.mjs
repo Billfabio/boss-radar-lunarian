@@ -8,7 +8,7 @@ export function findEvent(events,o){
   return events.filter(e=>e.boss===o.boss&&e.world===o.world&&compatible(e)).filter(e=>overlap(e,o)||distance(e,o)<=temporalTolerance(o)).sort((a,b)=>Math.abs(a.estimatedAt-o.estimatedAt)-Math.abs(b.estimatedAt-o.estimatedAt))[0]||null;
 }
 export function recomputeEvent(event,sources){
-  const evidence=event.evidence||[],usable=evidence.filter(x=>!['DESCARTADO','SUSPEITO'].includes(x.quality?.status));
+  const evidence=event.evidence||[],usable=evidence.filter(x=>!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status));
   const active=usable.length?usable:evidence;let miss=1,weightedAt=0,total=0,min=Infinity,max=-Infinity,manual=false;
   const sourceIds=new Set();
   for(const x of active){const s=sources[x.sourceId],quality=(x.quality?.score??50)/100,w=(s?.effectiveWeight??s?.baseWeight??.6)*x.confidence*quality;miss*=1-clamp(w);sourceIds.add(x.sourceId);weightedAt+=x.estimatedAt*w;total+=w;min=Math.min(min,x.startAt);max=Math.max(max,x.endAt);manual||=x.manual;}
