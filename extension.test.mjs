@@ -88,3 +88,11 @@ test('downloadable extension zip embeds the current packaged source files exactl
  const zip=await readFile(new URL('./boss-radar-extension.zip',import.meta.url)),files=['manifest.json','adapter.js','collector-core.js','background.js','content.js','popup.html','popup.js','popup.css','LEIA-ME.md'];
  for(const name of files){const source=await readFile(new URL('./edge-extension/'+name,import.meta.url));assert.ok(zip.indexOf(source)>=0,'ZIP desatualizado: '+name);}
 });
+
+
+test('one reporter repeating messages cannot mimic independent confirmations',()=>{
+ const one=Array.from({length:20},(_,i)=>({id:'r'+i,world:'Lunarian',messageTimestamp:1000+i,authorHash:'a'.repeat(64),contextClassification:i%2?'CONFIRMATION':'POSSIBLE_REPORT',bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}]}));
+ const many=Array.from({length:4},(_,i)=>({id:'m'+i,world:'Lunarian',messageTimestamp:2000+i,authorHash:String.fromCharCode(97+i).repeat(64),contextClassification:'CONFIRMATION',bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}]}));
+ const c1=[],c2=[];for(const e of one)mergeEvidence(c1,e);for(const e of many)mergeEvidence(c2,e);enrichCandidate(c1[0],one);enrichCandidate(c2[0],many);
+ assert.equal(c1[0].participants,1);assert.equal(c2[0].participants,4);assert.ok(c2[0].score>c1[0].score);
+});
