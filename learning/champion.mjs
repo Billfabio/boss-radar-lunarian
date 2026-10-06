@@ -14,8 +14,8 @@ export function comparePaired(forecasts,champion,challenger){
  const d=mean(pairs),sd=Math.sqrt(variance(pairs,d)),se=sd/Math.sqrt(pairs.length),lower=d-1.96*se,upper=d+1.96*se;
  return {samples:pairs.length,meanErrorImprovement:round(d),ci95:[round(lower),round(upper)],significant:lower>1};
 }
-export function championChallengerReport(forecasts,boss,world,current='adaptive_ensemble'){
- const rows=forecasts.filter(f=>f.boss===boss&&f.world===world&&f.resolvedAt).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0)).slice(0,300);
+export function championChallengerReport(forecasts,boss,world,current='adaptive_ensemble',{modelVersion=null}={}){
+ const rows=forecasts.filter(f=>f.boss===boss&&f.world===world&&(!modelVersion||f.modelVersion===modelVersion)&&f.resolvedAt).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0)).slice(0,300);
  const allNames=[...new Set(rows.flatMap(f=>[...(f.methods||[]),...(f.challengers||[])].map(m=>m.name)))];
  const stats=[current,...allNames.filter(x=>x!==current)].map(name=>{
   const x=methodRows(rows,name),errors=x.map(r=>r.error);
