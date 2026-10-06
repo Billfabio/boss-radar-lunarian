@@ -8,7 +8,7 @@ import {resolveForecasts,modelPublic,recalculateForecastOutcome,rebuildBossModel
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {runHistoricalBacktest} from '../backtest/history.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
-import {assessObservation,reassessEventQuality,qualitySummary} from '../data-quality/engine.mjs';
+import {assessObservation,reassessEventQuality,qualitySummary,DATA_QUALITY_ENGINE_VERSION} from '../data-quality/engine.mjs';
 import {calibrationReport,calibrateConfidence} from '../learning/calibration.mjs';
 import {championChallengerReport} from '../learning/champion.mjs';
 import {detectDrift} from '../learning/drift.mjs';
@@ -26,7 +26,7 @@ export function createIntelligence({state,persist,broadcast}){
  const previousEngineVersion=intel.engineVersion||null,previousModelVersion=intel.modelVersion||null;
  if(previousEngineVersion!==PREDICTION_ENGINE_VERSION||previousModelVersion!==MODEL_FAMILY_VERSION)appendLedger(intel.ledger,'engine_version_changed',{fromEngine:previousEngineVersion,fromModel:previousModelVersion,toEngine:PREDICTION_ENGINE_VERSION,toModel:MODEL_FAMILY_VERSION});
  intel.engineVersion=PREDICTION_ENGINE_VERSION;intel.modelVersion=MODEL_FAMILY_VERSION;
- let qualityBackfilled=0;for(const event of intel.events){for(const evidence of event.evidence||[]){if(!evidence.quality){evidence.quality=assessObservation(evidence,{sources:intel.sources,events:[]});qualityBackfilled++;}}if(event.evidence?.length)recomputeEvent(event,intel.sources);}if(qualityBackfilled)appendLedger(intel.ledger,'quality_backfill',{records:qualityBackfilled,version:3});
+ let qualityBackfilled=0;for(const event of intel.events){let changed=false;for(const evidence of event.evidence||[]){if(!evidence.quality||evidence.quality.version!==DATA_QUALITY_ENGINE_VERSION){evidence.quality=assessObservation(evidence,{sources:intel.sources,events:[],peerEvidence:(event.evidence||[]).filter(x=>x!==evidence)});qualityBackfilled++;changed=true;}}if(changed&&event.evidence?.length){recomputeEvent(event,intel.sources);event.updatedAt=Date.now();}}if(qualityBackfilled){rebuildSourceReliability(intel.events,intel.sources);appendLedger(intel.ledger,'quality_backfill',{records:qualityBackfilled,qualityEngineVersion:DATA_QUALITY_ENGINE_VERSION});}
  const backtestCache=new Map(),predictionCache=new Map();let intelligenceRevision=0,lastPredictionLatencyMs=null;
  const invalidatePredictions=()=>{intelligenceRevision++;predictionCache.clear();};
  const predictionsFor=world=>{const key=world+'|'+intelligenceRevision;if(predictionCache.has(key))return predictionCache.get(key);const started=performance.now(),rows=buildAdaptivePredictions(intel.events,world,intel.models).map(calibratedPrediction);lastPredictionLatencyMs=performance.now()-started;predictionCache.set(key,rows);return rows;};
@@ -67,7 +67,7 @@ export function createIntelligence({state,persist,broadcast}){
      if(!wasTraceable&&newTraceable&&sameCore){
        for(const key of ['sourceRef','collectionMethod','sourceObservedAt','collectedAt','processedAt','confirmedBy'])if((existing[key]==null||existing[key]===''||existing[key]==='unknown')&&obs[key]!=null&&obs[key]!=='')existing[key]=obs[key];
        existing.quality=assessObservation(existing,{sources:intel.sources,events:intel.events,peerEvidence:(existingEvent.evidence||[]).filter(x=>x!==existing)});
-       reassessEventQuality(existingEvent,intel.sources);recomputeEvent(existingEvent,intel.sources);invalidatePredictions();learnFromEvent(existingEvent,intel.sources);upsertForecast(existingEvent);
+       reassessEventQuality(existingEvent,intel.sources);recomputeEvent(existingEvent,intel.sources);invalidatePredictions();rebuildSourceReliability(intel.events,intel.sources);upsertForecast(existingEvent);
        appendLedger(intel.ledger,'evidence_provenance_enriched',{evidenceId:obs.evidenceId,eventId:existingEvent.id,boss:obs.boss,world:obs.world,sourceId:obs.sourceId,sourceRef:existing.sourceRef,collectionMethod:existing.collectionMethod});
        audit(intel.audit,'evidence_provenance_enriched',{boss:obs.boss,world:obs.world,sourceId:obs.sourceId,eventId:existingEvent.id,evidenceId:obs.evidenceId});
        return {event:existingEvent,duplicate:true,enriched:true};
