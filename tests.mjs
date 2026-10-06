@@ -555,3 +555,15 @@ test('intelligence initialization records engine/model version transition in the
  createIntelligence({state,persist:async()=>{},broadcast:()=>{}});
  const change=state.intelligence.ledger.find(x=>x.type==='engine_version_changed');assert.ok(change);assert.equal(change.payload.fromEngine,'4.1.0');assert.equal(change.payload.toEngine,'4.2.0');assert.equal(verifyLedger(state.intelligence.ledger).valid,true);
 });
+
+
+test('quality circuit stays half-open after HTTP recovery until three good evidence outcomes',()=>{
+ const sources=ensureSources({}),at=Date.now();
+ for(let i=0;i<8;i++)noteEvidenceOutcome(sources,'otbosstracker',{correct:false,errorMs:3*3600000,precision:'minute',consistency:.1,at:at+i});
+ const src=sources.otbosstracker;assert.equal(src.circuitState,'OPEN');assert.equal(src.circuitReason,'quality');
+ const retry=src.suspendedUntil+1;assert.equal(canAttemptSource(sources,'otbosstracker',retry),true);assert.equal(src.circuitState,'HALF_OPEN');
+ noteSource(sources,'otbosstracker',{ok:true,records:1,at:retry+1});assert.equal(src.circuitState,'HALF_OPEN');
+ noteEvidenceOutcome(sources,'otbosstracker',{correct:true,errorMs:60000,precision:'minute',consistency:.95,at:retry+2});assert.equal(src.circuitState,'HALF_OPEN');
+ noteEvidenceOutcome(sources,'otbosstracker',{correct:true,errorMs:60000,precision:'minute',consistency:.95,at:retry+3});assert.equal(src.circuitState,'HALF_OPEN');
+ noteEvidenceOutcome(sources,'otbosstracker',{correct:true,errorMs:60000,precision:'minute',consistency:.95,at:retry+4});assert.equal(src.circuitState,'CLOSED');assert.equal(src.circuitReason,null);
+});
