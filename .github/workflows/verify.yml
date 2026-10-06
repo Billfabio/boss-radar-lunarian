@@ -56,6 +56,8 @@ jobs:
         run: pnpm run test:intelligence-load
       - name: Active-runtime fault injection
         run: pnpm run test:failure-injection
+      - name: Lunarian collector synthetic benchmark
+        run: pnpm run test:extension-benchmark
       - name: Build Cloudflare package
         run: pnpm run cloud:build
       - name: Smoke test Cloudflare package
