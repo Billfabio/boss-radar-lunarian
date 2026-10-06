@@ -6,6 +6,7 @@ export function learnFromEvent(event,sources){
   const evidence=event.evidence||[],correction=evidence.filter(x=>x.manual&&x.detail?.correction).sort((a,b)=>(a.reportedAt||0)-(b.reportedAt||0)).at(-1);
   for(const x of evidence){
     if(x.evaluated)continue;const s=sources[x.sourceId];if(!s)continue;
+    if(x.manual&&x.detail?.correction){x.evaluated=true;x.referenceEvidence='ground_truth_correction';continue;}
     const peers=evidence.filter(y=>y!==x&&y.sourceId!==x.sourceId&&!y.anomaly);
     const reference=correction&&correction!==x?correction.estimatedAt:(peers.length?peers.reduce((n,y)=>n+y.estimatedAt,0)/peers.length:null);
     if(!Number.isFinite(reference))continue;
