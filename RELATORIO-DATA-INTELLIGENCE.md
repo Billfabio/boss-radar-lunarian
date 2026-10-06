@@ -1,6 +1,6 @@
 # Boss Radar — conclusão da infraestrutura Data Intelligence 4.5
 
-Branch exclusiva: `feature/intelligent-boss-radar`. Base remota auditada: `3d4d3f261fb782af53dc11e0922796fae7d99602`. `main` permanece em `8195919d6478f6b7d255dd6d1715fdab469e42aa`; não houve merge nem deploy.
+Branch exclusiva: `feature/intelligent-boss-radar`. Base remota auditada e validada: `f47c03640b8d194ee33807e37f49a19987995bc4`. `main` permanece em `8195919d6478f6b7d255dd6d1715fdab469e42aa`; não houve merge nem deploy.
 
 Esta fase implementa a infraestrutura dos cinquenta requisitos, incluindo as partes que faltavam na entrega 4.4. **Conclusão de implementação não equivale a descoberta estatística aprovada.** O checkout não contém o histórico operacional `data/state.json`, cobertura contínua real nem resultados prospectivos de produção. Não foram inventados spawns, rótulos negativos, relações, scores ou ganhos. Os dados controlados dos testes não são importados para o produto.
 
@@ -14,8 +14,8 @@ Esta fase implementa a infraestrutura dos cinquenta requisitos, incluindo as par
 | Antes / depois no mesmo cenário de referência | 116,9 / 116,9 min; ganho de MAE 0% |
 | Build, smoke e pacote Cloudflare | Aprovados; Wrangler dry-run concluído, sem publicação |
 | Fault injection | Aprovada no runtime ativo |
-| Carga Windows local | Falhou: 36 ECONNREFUSED em 1.000 e 36 em 10.000 requisições; limiares preservados. Mesmo tipo/quantidade observado na base anterior |
-| CI Linux e migrations PostgreSQL | Pipeline anterior c98fde3 aprovada em todos os checks, incluindo carga Linux e aplicação dupla das migrations; verificar commit final no PR |
+| Carga Windows local | O benchmark local Windows continua sujeito a ECONNREFUSED em carga alta e não é critério de produção. No CI Linux do commit final: p95 26,9 ms (10), 77,2 ms (100), 182,6 ms (1.000) e 139,7 ms (10.000) consumidores virtuais. |
+| CI Linux e migrations PostgreSQL | Commit final `f47c036` aprovado. Migrations 002–005 aplicadas duas vezes no PostgreSQL 16 sem erro; idempotência validada. |
 | Eventos reais de spawn utilizados nesta análise operacional | 0; histórico do serviço não disponível no checkout |
 | Pesquisa pública real | 12 URLs candidatas, incluindo 3 raízes iniciais e 9 links encontrados; 5 notícias oficiais coletadas; 0 spawns coletados |
 | Novos sinais aprovados / rejeitados em dados operacionais | 0 / 0; sem dataset elegível. Estados e experimentos negativos são persistidos quando houver execução real |
@@ -103,6 +103,22 @@ O runtime do projeto continua em arquivo legado. As migrations não significam q
 Survival usa suporte discreto nos limites observados e cauda explícita; não identifica segundos dentro de censura larga. Sem convergência, cobertura ou calibração, recusa probabilidade. A distribuição só é exibida como calibrada com seis horizontes validados e CDF monotônica. O grafo de fontes encontra suspeitas de réplica por conteúdo idêntico, sem inferir causalidade de cópia. Dados anteriores à captura não ganham disponibilidade histórica retroativa.
 
 Os arquivos /mnt/data mencionados no início não estão anexados neste ambiente Windows. A auditoria anterior foi feita sobre código e resumo recuperado; não se afirma comparação literal com um arquivo ausente. A solicitação completa dos cinquenta requisitos enviada neste chat é a especificação desta fase.
+
+## Validação final do commit atual
+
+No commit `f47c03640b8d194ee33807e37f49a19987995bc4`:
+
+- 90 arquivos JavaScript/MJS passaram pela checagem de sintaxe;
+- auditoria anti-IA-de-fachada aprovada;
+- 143 testes executados, 143 aprovados e 0 falhas;
+- migrations 002–005 aplicadas duas vezes no PostgreSQL 16;
+- regression gate temporal: ensemble 116,9 min de MAE, melhor baseline 116,9 min;
+- benchmark Linux: p95 26,9 ms / 77,2 ms / 182,6 ms / 139,7 ms para 10 / 100 / 1.000 / 10.000 consumidores virtuais;
+- fault injection aprovado;
+- build, smoke e Wrangler dry-run aprovados;
+- nenhuma publicação/deploy foi executada.
+
+A comparação de referência continua mostrando **0% de ganho de MAE** do ensemble sobre o melhor baseline no cenário sintético/temporal usado pelo gate. Isso é mantido explicitamente para não declarar melhoria que os dados ainda não demonstram.
 
 ## Próximos experimentos com dados reais
 
