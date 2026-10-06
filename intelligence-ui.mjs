@@ -17,7 +17,7 @@ export function renderIntelligence(model){
  </section>
  <section class="group-panel trust-center"><div class="eyebrow">CENTRAL DE CONFIABILIDADE</div><h2>Qualidade, calibração e governança</h2>
  <div class="intel-kpis">
-  <article><span>QUALIDADE DOS DADOS</span><strong>${quality.averageScore==null?'—':esc(quality.averageScore)+'/100'}</strong><small>${esc(quality.scored||0)} de ${esc(quality.records||0)} evidências avaliadas</small></article>
+  <article><span>QUALIDADE DOS DADOS</span><strong>${quality.averageScore==null?'—':esc(quality.averageScore)+'/100'}</strong><small>${esc(quality.traceable||0)} rastreáveis · ${esc(quality.untraceable||0)} sem origem · ${quality.traceabilityRate==null?'—':esc(quality.traceabilityRate)+'%'} rastreabilidade</small></article>
   <article><span>CONFLITOS</span><strong>${esc(trust.conflicts||0)}</strong><small>${esc(trust.quarantined||0)} em quarentena</small></article>
   <article><span>CALIBRAÇÃO</span><strong>${cal.ece==null?'—':esc(cal.ece)+' p.p.'}</strong><small>Erro de calibração esperado</small></article>
   <article><span>DRIFT</span><strong>${esc((trust.drifts||[]).length)}</strong><small>Bosses com mudança de padrão</small></article>
@@ -37,7 +37,7 @@ export function renderIntelligence(model){
  <tr><td>prediction_latency</td><td>${obs.prediction_latency==null?'—':esc(obs.prediction_latency)+' ms'}</td><td>prediction_error_minutes</td><td>${obs.prediction_error_minutes==null?'—':'±'+esc(obs.prediction_error_minutes)+' min'}</td></tr>
  <tr><td>confidence_calibration_error · ECE</td><td>${obs.confidence_calibration_error==null?'—':esc(obs.confidence_calibration_error)+' p.p.'}</td><td>confidence_calibration_max_gap · MCE</td><td>${obs.confidence_calibration_max_gap==null?'—':esc(obs.confidence_calibration_max_gap)+' p.p.'}</td></tr>
  <tr><td>confidence_brier_score</td><td>${obs.confidence_brier_score==null?'—':esc(obs.confidence_brier_score)}</td><td>raw_calibration_error</td><td>${cal.rawEce==null?'—':esc(cal.rawEce)+' p.p.'}</td></tr>
- <tr><td>data_quality_score</td><td>${obs.data_quality_score==null?'—':esc(obs.data_quality_score)+'/100'}</td><td>drift_score</td><td>${esc(obs.drift_score??0)}</td></tr>
+ <tr><td>data_quality_score</td><td>${obs.data_quality_score==null?'—':esc(obs.data_quality_score)+'/100'}</td><td>data_quality_traceability_rate</td><td>${obs.data_quality_traceability_rate==null?'—':esc(obs.data_quality_traceability_rate)+'%'}</td></tr><tr><td>data_quality_untraceable</td><td>${esc(obs.data_quality_untraceable??0)}</td><td>drift_score</td><td>${esc(obs.drift_score??0)}</td></tr>
  <tr><td>anomaly_rate</td><td>${esc(obs.anomaly_rate??0)}%</td><td>prediction_volume</td><td>${esc(obs.prediction_volume??0)}</td></tr>
  </tbody></table></div>
  </section>
