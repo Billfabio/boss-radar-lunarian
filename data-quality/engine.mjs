@@ -51,16 +51,18 @@ export function assessObservation(obs,{sources={},events=[],peerEvidence=[],now=
  };
  const weights={provenance:.15,temporal:.14,freshness:.1,source:.2,corroboration:.16,structural:.05,anomaly:.14,uniqueness:.06};
  let score=0;for(const [k,w] of Object.entries(weights))score+=components[k]*w;
- const anomalyKind=String(obs.anomaly?.kind||'');
+ const anomalyKind=String(obs.anomaly?.kind||''),method=String(obs.collectionMethod||obs.detail?.collectionMethod||'').trim().toLowerCase(),ref=String(obs.sourceRef||obs.detail?.sourceRef||'').trim().toLowerCase(),traceable=!!obs.sourceId&&!!obs.evidenceId&&!!method&&method!=='unknown'&&!!ref&&ref!=='unknown'&&ref!=='n/a';
  if(anomalyKind.includes('impossible'))score=Math.min(score,.34);
  else if(anomalyKind.includes('too_soon'))score=Math.min(score,.54);
  else if(anomalyKind.includes('outlier'))score=Math.min(score,.64);
+ if(!traceable)score=Math.min(score,.69);
  if(obs.manual&&obs.detail?.correction)score=Math.max(score,.98);
  score=Math.round(clamp(score)*100);
  let status=score>=85?STATUS.confirmed:score>=70?STATUS.probable:score>=55?STATUS.waiting:score>=35?STATUS.suspect:STATUS.discarded;
+ if(!traceable&&status!==STATUS.discarded)status=STATUS.waiting;
  if(obs.anomaly&&status===STATUS.confirmed)status=STATUS.waiting;
- const eligibleForLearning=score>=70&&!obs.anomaly&&status!==STATUS.discarded;
- return {score,status,eligibleForLearning,components:Object.fromEntries(Object.entries(components).map(([k,v])=>[k,Math.round(v*100)])),evaluatedAt:now};
+ const eligibleForLearning=traceable&&score>=70&&!obs.anomaly&&status!==STATUS.discarded&&status!==STATUS.waiting;
+ return {score,status,eligibleForLearning,traceable,components:Object.fromEntries(Object.entries(components).map(([k,v])=>[k,Math.round(v*100)])),evaluatedAt:now};
 }
 
 export function reassessEventQuality(event,sources,now=Date.now()){
