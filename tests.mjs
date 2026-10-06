@@ -246,3 +246,68 @@ test('WhatsApp streams newly accepted records to intelligence callback immediate
  await call('/extension/sync',{group:'Bosses',messages:[{id,text:'Dharalion encontrado',date:'2026-10-05',time:'10:10'}],checkpoint:{id,at},coverage:'complete'},paired.key);
  assert.equal(streamed.length,1);assert.equal(streamed[0].boss,'Dharalion');assert.equal(streamed[0].origin,'whatsapp');
 });
+
+
+import {runHistoricalBacktest} from './backtest/history.mjs';
+import {TaskQueue} from './runtime/task-queue.mjs';
+import {buildHealth} from './runtime/health.mjs';
+
+test('daily observations on consecutive days remain separate events',()=>{
+ const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
+ const events=[],d1=Date.parse('2026-10-01T12:00:00-03:00'),d2=Date.parse('2026-10-02T12:00:00-03:00');
+ mergeObservation(events,makeObservation({evidenceId:'d1',boss:'Daily Boss',world:'Lunarian',sourceId:'otbosstracker',eventType:'kill',precision:'day',estimatedAt:d1,confidence:.7}),sources);
+ mergeObservation(events,makeObservation({evidenceId:'d2',boss:'Daily Boss',world:'Lunarian',sourceId:'otbosstracker',eventType:'kill',precision:'day',estimatedAt:d2,confidence:.7}),sources);
+ assert.equal(events.length,2);
+});
+
+test('manual correction becomes authoritative consolidated time',()=>{
+ const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
+ const at=Date.parse('2026-10-01T20:00:00-03:00'),events=[];
+ const first=makeObservation({evidenceId:'source',boss:'Correct Boss',world:'Lunarian',sourceId:'whatsapp-group',eventType:'kill',precision:'minute',estimatedAt:at,confidence:.8});
+ const correction=makeObservation({evidenceId:'correction',boss:'Correct Boss',world:'Lunarian',sourceId:'manual-panel',eventType:'kill',precision:'minute',estimatedAt:at+11*60000,manual:true,confidence:.995,detail:{correction:true}});
+ mergeObservation(events,first,sources);mergeObservation(events,correction,sources);
+ assert.equal(events.length,1);assert.equal(events[0].estimatedAt,at+11*60000);assert.equal(events[0].status,'confirmed_manual');
+});
+
+test('source reliability waits for independent corroboration instead of self-scoring',()=>{
+ const sources=ensureSources({}),before=sources['otbosstracker'].alpha,at=Date.now();
+ const event={status:'confirmed_auto',estimatedAt:at,evidence:[{sourceId:'otbosstracker',precision:'minute',estimatedAt:at,confidence:.8}]};
+ learnFromEvent(event,sources);
+ assert.equal(sources['otbosstracker'].alpha,before);assert.equal(event.evidence[0].evaluated,undefined);
+ event.evidence.push({sourceId:'manual-panel',precision:'minute',estimatedAt:at+60000,confidence:.99,manual:true,detail:{correction:true},reportedAt:at+1000});
+ learnFromEvent(event,sources);
+ assert.ok(sources['otbosstracker'].alpha>before);assert.equal(event.evidence[0].referenceEvidence,'manual_correction');
+});
+
+test('walk-forward backtest evaluates only future event after minimum training history',()=>{
+ const H=3600000,base=Date.parse('2026-01-01T20:00:00-03:00'),events=[];
+ for(let i=0;i<12;i++)events.push({id:'bt'+i,boss:'Back Boss',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*H,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]});
+ const result=runHistoricalBacktest(events,'Lunarian',{minTrain:5});
+ assert.equal(result.eventsEvaluated,7);assert.ok(result.predictionsEvaluated>=7);
+ assert.equal(result.perBoss[0].testedEvents,7);assert.ok(result.perBoss[0].models.some(x=>x.model==='adaptive_ensemble'));
+});
+
+test('adaptive prediction exposes deterministic confidence breakdown summing to final score',()=>{
+ const base=Date.parse('2026-01-01T20:00:00-03:00'),events=[];
+ for(let i=0;i<12;i++)events.push({id:'cf'+i,boss:'Confidence Boss',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*3600000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]});
+ const p=predictAdaptive(events,'Confidence Boss','Lunarian',{});
+ assert.equal(p.status,'ready');assert.ok(p.confidenceBreakdown);
+ const total=p.confidenceBreakdown.base+p.confidenceBreakdown.history+p.confidenceBreakdown.modelAgreement+p.confidenceBreakdown.sourceReliability+p.confidenceBreakdown.temporalQuality;
+ assert.ok(Math.abs(total-p.confidence)<=1);
+});
+
+test('task queue bounds pending work and reports health truthfully',async()=>{
+ const q=new TaskQueue({concurrency:1,maxPending:1});let release;const gate=new Promise(r=>release=r);
+ const a=q.enqueue('a',()=>gate),b=q.enqueue('b',async()=>2);assert.throws(()=>q.enqueue('c',async()=>3),/Fila de processamento cheia/);
+ release(1);assert.equal(await a,1);assert.equal(await b,2);assert.equal(q.stats().completed,2);
+ const health=buildHealth({lastPoll:Date.now(),lastCollectionAt:Date.now(),lastPredictionAt:Date.now(),queue:q.stats(),sources:[],whatsapp:{connected:true},clients:1,errors24h:0});
+ assert.equal(health.services.api.status,'ONLINE');assert.equal(health.services.whatsapp.status,'ONLINE');
+});
+
+test('forecast metrics flags significant recent deterioration only with enough evidence',()=>{
+ const now=Date.now(),rows=[];
+ for(let i=0;i<20;i++)rows.push({world:'Lunarian',boss:'D',resolvedAt:now-(8+i)*86400000,windowHit:true,errorMinutes:10});
+ for(let i=0;i<6;i++)rows.push({world:'Lunarian',boss:'D',resolvedAt:now-i*86400000,windowHit:i===0,errorMinutes:40});
+ const m=forecastMetrics(rows,'Lunarian',now);
+ assert.equal(m.deterioration?.detected,true);assert.ok(m.deterioration.accuracyDrop>=15);
+});
