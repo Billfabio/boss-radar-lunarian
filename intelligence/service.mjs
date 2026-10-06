@@ -1,4 +1,4 @@
-import {ensureSources,noteSource,sourcePublic} from '../sources/registry.mjs';
+import {ensureSources,noteSource,sourcePublic,noteDuplicate,canAttemptSource} from '../sources/registry.mjs';
 import {publicHistoryObservation,checkObservation,makeObservation,canonical} from '../normalization/observations.mjs';
 import {mergeObservation,recomputeEvent,removeEvidence} from '../deduplication/events.mjs';
 import {refreshEffectiveWeights,learnFromEvent,anomalyFor,rebuildSourceReliability} from '../learning/reliability.mjs';
@@ -8,42 +8,60 @@ import {resolveForecasts,modelPublic,recalculateForecastOutcome,rebuildBossModel
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {runHistoricalBacktest} from '../backtest/history.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
+import {assessObservation,qualitySummary} from '../data-quality/engine.mjs';
+import {calibrationReport,calibrateConfidence} from '../learning/calibration.mjs';
+import {championChallengerReport} from '../learning/champion.mjs';
+import {detectDrift} from '../learning/drift.mjs';
+import {aiObservability} from '../metrics/ai-observability.mjs';
+import {appendLedger,verifyLedger} from '../event-sourcing/ledger.mjs';
+import {PREDICTION_ENGINE_VERSION,MODEL_FAMILY_VERSION,datasetVersion} from '../prediction/version.mjs';
 
 const trimOldestFirst=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
 const trimNewestFirst=(a,n)=>{if(a.length>n)a.length=n;return a;};
 export function createIntelligence({state,persist,broadcast}){
- state.intelligence ||= {version:2,sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{}};
+ state.intelligence ||= {version:3,sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{},ledger:[]};
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
- intel.version=2;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};
+ intel.version=3;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};intel.ledger ||= [];
  const backtestCache=new Map();
  const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
 
- function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||''},result.at||Date.now());}
+ function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||'',circuitState:intel.sources[id]?.circuitState},result.at||Date.now());}
+ function sourceReady(id,now=Date.now()){return canAttemptSource(intel.sources,id,now);}
 
+ function calibratedPrediction(prediction){
+   if(prediction.status!=='ready')return prediction;
+   let calibration=calibrateConfidence(prediction.confidence,intel.forecasts,prediction.world,prediction.boss);
+   if(calibration.samples<20)calibration=calibrateConfidence(prediction.confidence,intel.forecasts,prediction.world,null);
+   return {...prediction,confidenceRaw:prediction.confidence,confidence:calibration.calibrated,calibration};
+ }
  function upsertForecast(event){
-   if(!event||!/^confirmed_/.test(event.status)||event.eventType==='absence')return null;
-   const prediction=predictAdaptive(intel.events,event.boss,event.world,intel.models);
+   if(!event||!/^confirmed_/.test(event.status)||event.eventType==='absence'||['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(event.qualityStatus))return null;
+   const prediction=calibratedPrediction(predictAdaptive(intel.events,event.boss,event.world,intel.models));
    if(prediction.status!=='ready'||prediction.baseEventId!==event.id)return null;
    let forecast=intel.forecasts.find(f=>!f.resolvedAt&&f.boss===event.boss&&f.world===event.world&&f.baseEventId===event.id);
-   const fields={boss:event.boss,world:event.world,baseEventId:event.id,baseEventAt:event.estimatedAt,windowStart:prediction.windowStart,windowEnd:prediction.windowEnd,predictedCenterAt:prediction.predictedCenterAt,likelyAt:prediction.likelyAt,confidence:prediction.confidence,probability:prediction.probability,methods:prediction.methods,trend:prediction.trend,sampleSize:prediction.sampleSize};
-   if(forecast){Object.assign(forecast,fields,{lastUpdatedAt:Date.now(),revisions:(forecast.revisions||1)+1});}
-   else{forecast={id:'forecast-'+event.id+'-'+Date.now(),...fields,createdAt:Date.now(),lastUpdatedAt:Date.now(),revisions:1};intel.forecasts.unshift(forecast);audit(intel.audit,'forecast_created',{boss:event.boss,world:event.world,forecastId:forecast.id,confidence:forecast.confidence,probability:forecast.probability});}
+   const fields={boss:event.boss,world:event.world,baseEventId:event.id,baseEventAt:event.estimatedAt,windowStart:prediction.windowStart,windowEnd:prediction.windowEnd,predictedCenterAt:prediction.predictedCenterAt,likelyAt:prediction.likelyAt,confidenceRaw:prediction.confidenceRaw,confidence:prediction.confidence,calibration:prediction.calibration,probability:prediction.probability,predictionScore:prediction.predictionScore,dataQualityScore:prediction.dataQualityScore,uncertaintyMs:prediction.uncertaintyMs,probabilityDistribution:prediction.probabilityDistribution,methods:prediction.methods,challengers:prediction.challengers,champion:'adaptive_ensemble',trend:prediction.trend,drift:prediction.drift,sampleSize:prediction.sampleSize,predictionEngineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION,datasetVersion:datasetVersion(intel.events,event.boss,event.world)};
+   if(forecast){Object.assign(forecast,fields,{lastUpdatedAt:Date.now(),revisions:(forecast.revisions||1)+1});appendLedger(intel.ledger,'forecast_revised',{forecastId:forecast.id,boss:event.boss,world:event.world,revision:forecast.revisions,modelVersion:forecast.modelVersion,datasetVersion:forecast.datasetVersion});}
+   else{forecast={id:'forecast-'+event.id+'-'+Date.now(),...fields,createdAt:Date.now(),lastUpdatedAt:Date.now(),revisions:1};intel.forecasts.unshift(forecast);appendLedger(intel.ledger,'forecast_created',{forecastId:forecast.id,boss:event.boss,world:event.world,confidence:forecast.confidence,predictionScore:forecast.predictionScore,modelVersion:forecast.modelVersion,datasetVersion:forecast.datasetVersion});audit(intel.audit,'forecast_created',{boss:event.boss,world:event.world,forecastId:forecast.id,confidence:forecast.confidence,probability:forecast.probability,predictionScore:forecast.predictionScore});}
    return forecast;
  }
  function addObservation(obs,{allowAnomaly=true}={}){
    if(!obs)return null;
-   const prediction=predictBoss(intel.events,obs.boss,obs.world);
-   const anomaly=allowAnomaly?anomalyFor(obs,intel.events,prediction):null;
+   refreshEffectiveWeights(intel.sources);
+   const prediction=predictBoss(intel.events,obs.boss,obs.world),anomaly=allowAnomaly?anomalyFor(obs,intel.events,prediction):null;
    if(anomaly)obs.anomaly=anomaly;
+   obs.quality=assessObservation(obs,{sources:intel.sources,events:intel.events});
+   appendLedger(intel.ledger,'evidence_received',{evidenceId:obs.evidenceId,boss:obs.boss,world:obs.world,sourceId:obs.sourceId,sourceRef:obs.sourceRef,collectionMethod:obs.collectionMethod,sourceObservedAt:obs.sourceObservedAt,collectedAt:obs.collectedAt,processedAt:obs.processedAt,quality:obs.quality,anomaly:obs.anomaly||null});
    const result=mergeObservation(intel.events,obs,intel.sources);
+   if(result.duplicate){noteDuplicate(intel.sources,obs.sourceId);appendLedger(intel.ledger,'evidence_duplicate',{evidenceId:obs.evidenceId,sourceId:obs.sourceId,boss:obs.boss,world:obs.world});return result;}
    if(result.event){
      if(obs.anomaly)result.event.anomaly=obs.anomaly;
      learnFromEvent(result.event,intel.sources);
      const resolved=resolveForecasts(intel.forecasts,result.event,intel.models);
-     for(const row of resolved)audit(intel.audit,'forecast_resolved',{boss:row.boss,world:row.world,forecastId:row.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});
+     for(const row of resolved){appendLedger(intel.ledger,'forecast_resolved',{forecastId:row.id,actualEventId:result.event.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});audit(intel.audit,'forecast_resolved',{boss:row.boss,world:row.world,forecastId:row.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});}
      upsertForecast(result.event);
-     audit(intel.audit,'observation_ingested',{boss:obs.boss,world:obs.world,sourceId:obs.sourceId,eventId:result.event.id,status:result.event.status,confidence:Math.round(result.event.confidence*100),anomaly:obs.anomaly?.kind||null});
+     appendLedger(intel.ledger,'event_consolidated',{eventId:result.event.id,boss:result.event.boss,world:result.event.world,status:result.event.status,qualityStatus:result.event.qualityStatus,dataQualityScore:result.event.dataQualityScore,estimatedAt:result.event.estimatedAt,confirmingSources:result.event.confirmingSources});
+     audit(intel.audit,'observation_ingested',{boss:obs.boss,world:obs.world,sourceId:obs.sourceId,eventId:result.event.id,status:result.event.status,qualityStatus:result.event.qualityStatus,dataQualityScore:result.event.dataQualityScore,confidence:Math.round(result.event.confidence*100),anomaly:obs.anomaly?.kind||null});
    }
    return result;
  }
