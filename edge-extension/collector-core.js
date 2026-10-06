@@ -32,6 +32,6 @@
   if(/\b(?:saiu|spawn|nasceu|apareceu|agora|achei|encontrei|foi|ta aqui|esta aqui)\b/.test(s))return 'POSSIBLE_REPORT';
   return 'UNKNOWN';
  }
- const fingerprintMaterial=({groupKey='',authorHash='',messageTimestamp='',normalizedText=''})=>[groupKey,authorHash,messageTimestamp,norm(normalizedText)].join('|');
+ const fingerprintMaterial=({groupKey='',authorHash='',messageTimestamp='',normalizedText='',messageKey=''})=>[groupKey,authorHash,messageTimestamp,messageKey,norm(normalizedText)].join('|');
  globalThis.BossCollectorCore={norm,compact,similarity,compileDictionary,match,classify,fingerprintMaterial};
 })();
