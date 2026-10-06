@@ -51,6 +51,10 @@ export function assessObservation(obs,{sources={},events=[],peerEvidence=[],now=
  };
  const weights={provenance:.15,temporal:.14,freshness:.1,source:.2,corroboration:.16,structural:.05,anomaly:.14,uniqueness:.06};
  let score=0;for(const [k,w] of Object.entries(weights))score+=components[k]*w;
+ const anomalyKind=String(obs.anomaly?.kind||'');
+ if(anomalyKind.includes('impossible'))score=Math.min(score,.34);
+ else if(anomalyKind.includes('too_soon'))score=Math.min(score,.54);
+ else if(anomalyKind.includes('outlier'))score=Math.min(score,.64);
  if(obs.manual&&obs.detail?.correction)score=Math.max(score,.98);
  score=Math.round(clamp(score)*100);
  let status=score>=85?STATUS.confirmed:score>=70?STATUS.probable:score>=55?STATUS.waiting:score>=35?STATUS.suspect:STATUS.discarded;
