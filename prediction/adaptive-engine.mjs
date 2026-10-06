@@ -22,6 +22,15 @@ function intervalMethod(rows,kind){
  if(kind==='recent'){const recent=ints.slice(-Math.min(12,ints.length)),w=recencyWeights(recent.length,4),center=weightedMedian(recent,w),spread=robustSpread(recent,center);return {name:'recent_interval',predictedAt:rows.at(-1).estimatedAt+center,intervalMs:center,spreadMs:spread,samples:recent.length};}
  const center=median(ints),spread=robustSpread(ints,center);return {name:'historical_interval',predictedAt:rows.at(-1).estimatedAt+center,intervalMs:center,spreadMs:spread,samples:ints.length};
 }
+function simpleIntervalMethods(rows){
+ const ints=intervals(rows);if(ints.length<2)return [];
+ const last=rows.at(-1).estimatedAt,recent=ints.slice(-Math.min(10,ints.length)),historicalMean=ints.reduce((a,b)=>a+b,0)/ints.length,recentMean=recent.reduce((a,b)=>a+b,0)/recent.length,lastInterval=ints.at(-1);
+ return [
+  {name:'recent_mean_10',predictedAt:last+recentMean,intervalMs:recentMean,spreadMs:robustSpread(recent,recentMean),samples:recent.length},
+  {name:'last_interval',predictedAt:last+lastInterval,intervalMs:lastInterval,spreadMs:robustSpread(recent,lastInterval),samples:1},
+  {name:'historical_mean',predictedAt:last+historicalMean,intervalMs:historicalMean,spreadMs:robustSpread(ints,historicalMean),samples:ints.length}
+ ];
+}
 function hourMethod(rows,intervalCenter){
  const p=rows.filter(precise);if(p.length<8)return null;const hours=p.map(e=>circHour(e.estimatedAt)),w=recencyWeights(hours.length,10);
  // Circular mean, then project near interval-based target day.
@@ -43,9 +52,9 @@ export function predictAdaptive(events,boss,world,models={},now=Date.now()){
  if(rows.length<5)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:Math.min(49,rows.length*8),scoreLabel:'DADOS INSUFICIENTES',methods:[],explain:[`Apenas ${rows.length} aparições confirmadas e aprovadas pela camada de qualidade.`]};
  const hist=intervalMethod(rows,'historical'),recent=intervalMethod(rows,'recent');if(!hist)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:35,scoreLabel:'DADOS INSUFICIENTES',methods:[],explain:['Histórico insuficiente para estimar intervalo.']};
  const drift=detectDrift(events,boss,world),recentMultiplier=drift.recentWeightMultiplier||1,historyMultiplier=drift.historyWeightMultiplier||1;
- const methods=[hist,recent,hourMethod(rows,recent?.intervalMs||hist.intervalMs),weekdayMethod(rows,recent?.intervalMs||hist.intervalMs)].filter(Boolean);
+ const methods=[hist,recent,...simpleIntervalMethods(rows),hourMethod(rows,recent?.intervalMs||hist.intervalMs),weekdayMethod(rows,recent?.intervalMs||hist.intervalMs)].filter(Boolean);
  const modelState=models[world+'|'+String(boss).toLowerCase()]?.methods||{};
- const weighted=methods.map(m=>{let base=(m.name==='recent_interval'?1.08:(m.name==='historical_interval'?1:(m.name==='time_of_day'?0.72:0.58)));if(m.name==='recent_interval')base*=recentMultiplier;if(m.name==='historical_interval')base*=historyMultiplier;const learned=adaptiveMethodWeight(models,boss,world,m.name,m.name.includes('interval')?24*60:8*60),learnedState=modelState[m.name]||null;const dataFactor=clamp(Math.log2((m.samples||1)+1)/5,.25,1);const quality=m.concentration==null?1:clamp(.35+.9*m.concentration,.35,1.2);return {...m,weight:base*learned*dataFactor*quality,learnedSamples:learnedState?.count||0,learnedErrorMinutes:learnedState?.emaErrorMinutes??null,learnedHitRate:learnedState?.emaHitRate==null?null:Math.round(learnedState.emaHitRate*1000)/10};});
+ const weighted=methods.map(m=>{const bases={recent_interval:1.08,recent_mean_10:1.04,last_interval:.72,historical_interval:1,historical_mean:.78,time_of_day:.62,weekday:.5};let base=bases[m.name]??.6;if(['recent_interval','recent_mean_10','last_interval'].includes(m.name))base*=recentMultiplier;if(['historical_interval','historical_mean'].includes(m.name))base*=historyMultiplier;const intervalLike=!['time_of_day','weekday'].includes(m.name),learned=adaptiveMethodWeight(models,boss,world,m.name,intervalLike?24*60:8*60),learnedState=modelState[m.name]||null;const dataFactor=clamp(Math.log2((m.samples||1)+1)/5,.25,1);const quality=m.concentration==null?1:clamp(.35+.9*m.concentration,.35,1.2);return {...m,weight:base*learned*dataFactor*quality,learnedSamples:learnedState?.count||0,learnedErrorMinutes:learnedState?.emaErrorMinutes??null,learnedHitRate:learnedState?.emaHitRate==null?null:Math.round(learnedState.emaHitRate*1000)/10};});
  const totalWeight=weighted.reduce((n,m)=>n+m.weight,0)||1;for(const m of weighted)m.normalizedWeight=m.weight/totalWeight;
  const predictedAt=weightedMedian(weighted.map(m=>m.predictedAt),weighted.map(m=>m.weight));
  const ints=intervals(rows),globalSpread=Math.max(precise(rows.at(-1))?30*60000:12*HOUR,robustSpread(ints,median(ints)));
