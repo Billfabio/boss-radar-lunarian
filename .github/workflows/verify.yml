@@ -24,6 +24,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Check JavaScript syntax
         run: pnpm run check
+      - name: Verify intelligence integrity
+        run: pnpm run check:intelligence
       - name: Run tests
         run: pnpm test
       - name: Build Cloudflare package
