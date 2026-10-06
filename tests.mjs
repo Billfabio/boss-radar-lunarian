@@ -355,6 +355,7 @@ import {detectDrift} from './learning/drift.mjs';
 import {championChallengerReport} from './learning/champion.mjs';
 import {probabilityDistribution} from './prediction/distribution.mjs';
 import {appendLedger,verifyLedger} from './event-sourcing/ledger.mjs';
+import {createIntelligence} from './intelligence/service.mjs';
 
 test('data quality score rewards traceable precise evidence and quarantines weak anomalous evidence',()=>{
  const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
@@ -507,4 +508,18 @@ test('walk-forward calibration never uses future outcomes from another boss',()=
 test('health reports storage failure separately from API availability and recovery count',()=>{
  const h=buildHealth({lastPoll:Date.now(),lastCollectionAt:Date.now(),lastPredictionAt:Date.now(),queue:{},sources:[],whatsapp:{connected:true},clients:0,storage:{lastSuccessAt:Date.now()-1000,lastError:'disk full',recoveryCount:2}});
  assert.equal(h.services.api.status,'ONLINE');assert.equal(h.services.storage.status,'ERRO');assert.equal(h.services.storage.lastError,'disk full');assert.equal(h.services.storage.recoveryCount,2);
+});
+
+
+test('legacy duplicate can recover provenance idempotently without changing the observed fact',async()=>{
+ const state={intelligence:{version:3,sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{},ledger:[]}};
+ const intel=createIntelligence({state,persist:async()=>{},broadcast:()=>{}});
+ const at=Date.now()-3600000;
+ const old=makeObservation({evidenceId:'legacy-provenance',boss:'Legacy Boss',world:'Lunarian',sourceId:'otbosstracker',eventType:'kill',precision:'minute',estimatedAt:at,confidence:.9});
+ const first=intel.addObservation(old,{allowAnomaly:false});assert.equal(first.duplicate,false);
+ const event=state.intelligence.events[0],beforeAt=event.estimatedAt;assert.equal(event.evidence[0].quality.traceable,false);
+ const fresh=makeObservation({evidenceId:'legacy-provenance',boss:'Legacy Boss',world:'Lunarian',sourceId:'otbosstracker',sourceRef:'https://otbosstracker.com/data/bosses.json',collectionMethod:'public_json',eventType:'kill',precision:'minute',estimatedAt:at,confidence:.9});
+ const second=intel.addObservation(fresh,{allowAnomaly:false});
+ assert.equal(second.duplicate,true);assert.equal(second.enriched,true);assert.equal(event.estimatedAt,beforeAt);assert.equal(event.evidence.length,1);assert.equal(event.evidence[0].quality.traceable,true);assert.equal(event.evidence[0].sourceRef,'https://otbosstracker.com/data/bosses.json');
+ assert.ok(state.intelligence.ledger.some(x=>x.type==='evidence_provenance_enriched'));
 });
