@@ -67,7 +67,7 @@ A pasta `database/` contém:
 
 O esquema separa bosses, mundos, fontes, eventos, evidências, previsões, desempenho dos métodos, correções e auditoria. Isso permite migrar posteriormente para PostgreSQL, MySQL ou outra implementação sem alterar o motor de previsão.
 
-A migração do armazenamento legado deve ser feita de forma controlada para preservar todo o histórico existente.
+A migração do armazenamento legado deve ser feita de forma controlada para preservar todo o histórico existente. **O runtime atual ainda serializa o estado operacional em armazenamento legado; portanto, o esquema relacional está preparado, mas a aplicação ainda não deve ser considerada pronta para milhões de eventos até essa migração ser concluída.**
 
 ## Executar localmente
 
@@ -83,6 +83,26 @@ Abra:
 ```text
 http://127.0.0.1:4317/
 ```
+
+
+## Configuração de execução
+
+Por padrão o servidor inicia apenas em `127.0.0.1`, sem exigir login externo.
+
+Variáveis suportadas:
+
+| Variável | Uso |
+| --- | --- |
+| `PORT` | Porta HTTP. Padrão: `4317`. |
+| `HOST` | Interface de rede. Padrão: `127.0.0.1`. Use `0.0.0.0` somente em ambiente controlado. |
+| `PUBLIC_ORIGIN` | Origem pública completa, por exemplo `https://radar.exemplo.com`. Obrigatória quando o servidor é exposto fora do localhost. |
+| `ALLOWED_HOSTS` | Lista separada por vírgulas de valores válidos do header Host. |
+| `REQUIRE_AUTH` | Use `true` para exigir autenticação mesmo em uma origem local/customizada. |
+| `SITE_PASSWORD` | Senha do painel público. Obrigatória com pelo menos 12 caracteres quando a autenticação pública estiver ativa. |
+
+Não inclua `SITE_PASSWORD` ou outros secrets no GitHub.
+
+Em uma VPS ou cloud, use HTTPS no proxy/reverse proxy e configure `PUBLIC_ORIGIN` com a origem HTTPS final.
 
 ## Testes
 
