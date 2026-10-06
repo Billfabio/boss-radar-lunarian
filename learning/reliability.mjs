@@ -23,3 +23,11 @@ export function anomalyFor(observation,events,prediction){
   if(delta<2*3600000)return {kind:'too_soon',message:'Nova aparição apenas algumas horas após o último evento confirmado.',deltaMs:delta};
   return null;
 }
+
+export function rebuildSourceReliability(events,sources){
+  for(const s of Object.values(sources)){s.alpha=8*(s.baseWeight??.5);s.beta=8*(1-(s.baseWeight??.5));}
+  for(const event of events){for(const x of event.evidence||[]){delete x.evaluated;delete x.errorMs;delete x.agreementScore;delete x.referenceEvidence;}}
+  const ordered=[...events].filter(e=>/^confirmed_/.test(e.status)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
+  for(const event of ordered)learnFromEvent(event,sources);
+  return refreshEffectiveWeights(sources);
+}
