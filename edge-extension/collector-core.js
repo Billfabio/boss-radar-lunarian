@@ -7,15 +7,21 @@
  const containsPhrase=(text,phrase)=>{const t=' '+norm(text)+' ',p=' '+norm(phrase)+' ';return !!norm(phrase)&&t.includes(p);};
  const trigrams=s=>{const x=' '+compact(s)+' ',out=new Set();for(let i=0;i<x.length-2;i++)out.add(x.slice(i,i+3));return out;};
  function compileDictionary(dictionary={version:'',entries:[]}){
-  const exact=[],index=new Map();
-  for(const entry of dictionary.entries||[]){for(const raw of [entry.name,...(entry.aliases||[])]){const value=norm(raw);if(!value)continue;const item={boss_id:entry.boss_id,name:entry.name,value,alias:raw!==entry.name};exact.push(item);for(const g of trigrams(value)){if(!index.has(g))index.set(g,[]);index.get(g).push(item);}}}
-  return {version:dictionary.version||'',entries:dictionary.entries||[],exact,index};
+  const exact=[],index=new Map(),shapeIndex=new Map();
+  const addShape=(key,item)=>{if(!key)return;if(!shapeIndex.has(key))shapeIndex.set(key,[]);shapeIndex.get(key).push(item);};
+  for(const entry of dictionary.entries||[]){for(const raw of [entry.name,...(entry.aliases||[])]){const value=norm(raw);if(!value)continue;const item={boss_id:entry.boss_id,name:entry.name,value,alias:raw!==entry.name};exact.push(item);for(const g of trigrams(value)){if(!index.has(g))index.set(g,[]);index.get(g).push(item);}const c=compact(value);for(let d=-3;d<=3;d++){const len=c.length+d;if(len<3)continue;addShape('f:'+c[0]+'|'+len,item);if(c[1])addShape('s:'+c[1]+'|'+len,item);}}}
+  return {version:dictionary.version||'',entries:dictionary.entries||[],exact,index,shapeIndex};
  }
  function fuzzy(text,compiled){
-  const ws=words(text),phrases=[];for(let i=0;i<ws.length;i++)for(let n=1;n<=Math.min(4,ws.length-i);n++){const p=ws.slice(i,i+n).join(' ');if(compact(p).length>=4)phrases.push(p);}
-  const scored=new Map();
-  for(const phrase of phrases){const grams=trigrams(phrase),counts=new Map();for(const g of grams)for(const item of compiled.index.get(g)||[])counts.set(item,(counts.get(item)||0)+1);
-   for(const [item,count] of [...counts].sort((a,b)=>b[1]-a[1]).slice(0,24)){const a=compact(phrase),b=compact(item.value);if(Math.abs(a.length-b.length)>3)continue;const overlap=count/Math.max(1,trigrams(item.value).size);if(overlap<.3)continue;const score=similarity(phrase,item.value),threshold=b.length<=5?.88:b.length<=8?.82:.76;if(score<threshold)continue;const old=scored.get(item.name);if(!old||score>old.similarity)scored.set(item.name,{boss_id:item.boss_id,name:item.name,matchType:'FUZZY',similarity:Math.round(score*1000)/1000,matched:phrase});}}
+  const ws=words(text),scored=new Map(),seenPhrases=new Set();
+  for(let i=0;i<ws.length;i++)for(let n=1;n<=Math.min(4,ws.length-i);n++){
+   const phrase=ws.slice(i,i+n).join(' '),a=compact(phrase);if(a.length<4||seenPhrases.has(a))continue;seenPhrases.add(a);
+   let candidates=compiled.shapeIndex?.get('f:'+a[0]+'|'+a.length)||[];
+   if(!candidates.length&&a[1])candidates=compiled.shapeIndex?.get('s:'+a[1]+'|'+a.length)||[];
+   if(!candidates.length)continue;
+   const unique=new Set();
+   for(const item of candidates){const key=item.name+'|'+item.value;if(unique.has(key))continue;unique.add(key);const b=compact(item.value);if(Math.abs(a.length-b.length)>3)continue;const score=similarity(phrase,item.value),threshold=b.length<=5?.88:b.length<=8?.82:.76;if(score<threshold)continue;const old=scored.get(item.name);if(!old||score>old.similarity)scored.set(item.name,{boss_id:item.boss_id,name:item.name,matchType:'FUZZY',similarity:Math.round(score*1000)/1000,matched:phrase});}
+  }
   return [...scored.values()].sort((a,b)=>b.similarity-a.similarity).slice(0,5);
  }
  function match(text,compiled){
