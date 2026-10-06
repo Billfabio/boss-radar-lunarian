@@ -12,7 +12,7 @@
  async function reporter(author,salt){return author?hash(salt+'|author|'+author):'';}
  async function groupKey(identity,salt){return hash(salt+'|group|'+identity);}
  async function rawKey(m){return hash([m.nativeId,m.at||'',m.date,m.time,m.text].join('|'));}
- async function analyze(m,cfg,gKey){
+ async function imageData(el){const out=[];for(const img of [...el.querySelectorAll('img')].filter(i=>i.naturalWidth>80&&i.naturalHeight>60).slice(0,3)){try{const canvas=document.createElement('canvas'),scale=Math.min(1,1000/img.naturalWidth,1000/img.naturalHeight);canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);const data=canvas.toDataURL('image/jpeg',.7);if(data.length<=290000)out.push(data);}catch{}}return out;}\n async function analyze(m,cfg,gKey){
   const matches=core.match(m.text,compiled);if(!matches.length){add('messagesFiltered');return null;}add('bossMatches');for(const x of matches)add(x.matchType==='FUZZY'?'fuzzyMatches':'exactMatches');
   const capturedTimestamp=Date.now(),authorHash=await reporter(m.author,cfg.reporterSalt),fingerprint=await hash(core.fingerprintMaterial({groupKey:gKey,authorHash,messageTimestamp:m.at||'',normalizedText:m.text}));
   return {messageFingerprint:fingerprint,bossCandidates:matches,messageTimestamp:Number.isFinite(m.at)?m.at:null,capturedTimestamp,authorHash:authorHash||null,contextClassification:core.classify(m.text),text:String(m.text||'').slice(0,1000),normalizedText:core.norm(m.text).slice(0,1000),extensionVersion:VERSION};
@@ -28,7 +28,7 @@
    const detected=adapter.title(document,GROUP);if(core.norm(detected)!==core.norm(GROUP)){await status('LUNARIAN_NOT_FOUND','Abra o grupo Lunarian para ativar o Collector.',{configured:GROUP,detected,domOk:true,visible:health.messages,relevant:0});return;}
    const identity=adapter.groupIdentity(document,GROUP),gKey=await groupKey(identity,cfg.reporterSalt||'local'),nodes=adapter.messageNodes(document),{localCheckpoint}=await chrome.storage.local.get('localCheckpoint');
    if(!localCheckpoint){const visible=await baseline(nodes,cfg);await status('CONNECTED','Baseline criado. Somente mensagens novas serão tratadas como evidência.',{configured:GROUP,detected,domOk:true,visible,relevant:0});return;}
-   const extracted=[];for(const el of nodes){const m=adapter.extractNode(el);if(!m.text&&!m.media)continue;const key=await rawKey(m);extracted.push({...m,_key:key});}extracted.sort((a,b)=>(a.at||0)-(b.at||0));
+   const extracted=[];for(const el of nodes){const m=adapter.extractNode(el);if(!m.text&&!m.media)continue;const key=await rawKey(m);extracted.push({...m,_key:key,_el:el});}extracted.sort((a,b)=>(a.at||0)-(b.at||0));
    const cpIndex=extracted.findIndex(x=>x._key===localCheckpoint.key),oldest=extracted.find(x=>Number.isFinite(x.at)),gap=cpIndex<0&&oldest&&Number.isFinite(localCheckpoint.at)&&oldest.at>localCheckpoint.at+120000;
    const newer=extracted.filter((m,i)=>cpIndex>=0?i>cpIndex:!Number.isFinite(m.at)||m.at>Number(localCheckpoint.at||0));const evidence=[];
    for(const m of newer){add('messagesSeen');const row=await analyze(m,cfg,gKey);if(row)evidence.push(row);}
