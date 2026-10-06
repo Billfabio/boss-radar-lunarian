@@ -22,6 +22,8 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check JavaScript syntax
+        run: pnpm run check
       - name: Run tests
         run: pnpm test
       - name: Build Cloudflare package
