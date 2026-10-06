@@ -1,0 +1,32 @@
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dt=v=>Number.isFinite(Number(v))?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(Number(v))):'—';
+const duration=ms=>{if(!Number.isFinite(ms))return '—';const d=ms/86400000;if(d>=2)return d.toFixed(1)+' dias';const h=ms/3600000;if(h>=2)return h.toFixed(1)+' h';return Math.round(ms/60000)+' min';};
+const eventLabel={confirmed_manual:'CONFIRMADO MANUAL',confirmed_auto:'CONFIRMADO AUTO',probable:'PROVÁVEL',unconfirmed:'NÃO CONFIRMADO'};
+const sourceState=s=>!s.active?'PREPARADO':s.lastAttempt&&Date.now()-s.lastAttempt<15*60000?(s.lastError?'ERRO':'ONLINE'):s.lastSuccess?'SEM CONSULTA RECENTE':'AGUARDANDO';
+export function renderIntelligence(model){
+ const root=document.getElementById('intelligence-content');if(!root)return;
+ const intel=model.intelligence||{},m=intel.metrics||{},preds=intel.predictions||[],sources=intel.sources||[],events=intel.events||[];
+ root.innerHTML=`
+ <section class="intel-kpis">
+  <article><span>CONFIANÇA MÉDIA</span><strong>${m.averageConfidence==null?'—':esc(m.averageConfidence)+'%'}</strong><small>${esc(m.bossesModeled||0)} bosses modelados</small></article>
+  <article><span>ACERTO DA JANELA</span><strong>${m.windowAccuracy==null?'—':esc(m.windowAccuracy)+'%'}</strong><small>${esc(m.backtestSamples||0)} previsões reavaliadas</small></article>
+  <article><span>ERRO MÉDIO HORÁRIO</span><strong>${m.maeMinutes==null?'—':'±'+esc(m.maeMinutes)+' min'}</strong><small>Somente eventos com precisão horária suficiente</small></article>
+  <article><span>EVENTOS APRENDIDOS</span><strong>${events.length}</strong><small>Últimos eventos deste mundo</small></article>
+ </section>
+ <section class="group-panel"><div class="sectionhead"><div><div class="eyebrow">PREVISÃO EXPLICÁVEL</div><h2>Motor inteligente</h2></div></div>
+ <p class="muted">O sistema não força um horário exato. Quando faltam evidências em horas/minutos, mantém somente uma janela e reduz a confiança.</p>
+ <div class="table-wrap"><table class="ranking-table intelligence-table"><thead><tr><th>Boss</th><th>Última aparição</th><th>Próxima janela</th><th>Maior probabilidade</th><th>Probabilidade</th><th>Confiança</th><th>Tendência</th></tr></thead><tbody>
+ ${preds.length?preds.map(p=>`<tr><td><b>${esc(p.boss)}</b><details><summary>Por quê?</summary>${(p.explain||[]).map(x=>'<p>'+esc(x)+'</p>').join('')}<p>Intervalos: mínimo ${duration(p.intervalMinMs)} · mediano ${duration(p.intervalAverageMs)} · máximo ${duration(p.intervalMaxMs)}.</p></details></td><td>${dt(p.lastAt)}</td><td>${p.status==='ready'?dt(p.windowStart)+' – '+dt(p.windowEnd):'Dados insuficientes'}</td><td>${p.likelyAt?dt(p.likelyAt):'Sem minuto confiável'}</td><td>${p.probability||0}%</td><td><span class="confidence-pill">${p.confidence||0}%</span></td><td>${esc(p.trend||'—')}</td></tr>`).join(''):'<tr><td colspan="7">Ainda não há histórico confirmado suficiente para modelar este mundo.</td></tr>'}
+ </tbody></table></div></section>
+ <section class="group-panel"><div class="eyebrow">SAÚDE E PESO DINÂMICO</div><h2>Fontes de dados</h2><div class="table-wrap"><table class="ranking-table intelligence-table"><thead><tr><th>Fonte</th><th>Status</th><th>Confiabilidade</th><th>Sucesso</th><th>Registros</th><th>Latência</th><th>Última consulta</th></tr></thead><tbody>
+ ${sources.map(s=>`<tr><td><b>${esc(s.name)}</b><small class="muted">${esc(s.note||'')}</small></td><td><span class="source-state">${sourceState(s)}</span></td><td>${s.reliability}%</td><td>${s.successRate==null?'—':s.successRate+'%'}</td><td>${s.records||0}</td><td>${s.lastLatencyMs?Math.round(s.lastLatencyMs)+' ms':'—'}</td><td>${s.lastAttempt?dt(s.lastAttempt):'—'}${s.lastError?'<small class="source-error">'+esc(s.lastError)+'</small>':''}</td></tr>`).join('')}
+ </tbody></table></div></section>
+ <section class="group-panel"><div class="eyebrow">EVIDÊNCIAS CONSOLIDADAS</div><h2>Eventos recentes</h2><div id="intelligence-events">
+ ${events.slice(0,80).map(e=>`<article class="event-row"><div><b>${esc(e.boss)}</b><span class="badge ${e.status==='confirmed_auto'||e.status==='confirmed_manual'?'high':e.status==='probable'?'medium':'unknown'}">${eventLabel[e.status]||esc(e.status)}</span><p>${dt(e.estimatedAt)} · confiança ${e.confidence}% · ${e.sourceCount||0} fontes · ${e.confirmations||0} evidências</p>${e.anomaly?'<p class="source-error">⚠ '+esc(e.anomaly.message)+'</p>':''}<details><summary>Ver evidências</summary>${(e.evidence||[]).map(x=>`<p>${esc(x.sourceId)} · ${esc(x.precision)} · ${dt(x.estimatedAt)} · confiança da evidência ${x.confidence}%</p>`).join('')}</details></div><button class="secondary" data-correct-event="${esc(e.id)}" data-current-at="${e.estimatedAt}">Corrigir horário</button></article>`).join('')||'<div class="empty">Nenhum evento consolidado.</div>'}
+ </div></section>
+ <section class="group-panel"><div class="eyebrow">AUDITORIA</div><h2>Atividade recente</h2><div class="audit-list">${(intel.audit||[]).slice(0,80).map(a=>`<div class="log-row"><b>${esc(a.type)}</b><span>${esc(a.boss||a.sourceId||'sistema')} ${a.confidence!=null?'· '+a.confidence+'%':''}</span><small>${dt(a.at)}</small></div>`).join('')||'<div class="empty">Nenhuma atividade registrada.</div>'}</div></section>`;
+}
+export function initIntelligenceUI({getModel,post,reload,notify}){
+ const root=document.getElementById('intelligence-content');if(!root)return;
+ root.addEventListener('click',e=>{const b=e.target.closest('[data-correct-event]');if(!b)return;const current=Number(b.dataset.currentAt),local=new Date(current-3*3600000).toISOString().slice(0,16),value=prompt('Informe a data e hora corretas no horário de Brasília (AAAA-MM-DDTHH:MM):',local);if(!value)return;const at=Date.parse(value+':00-03:00');if(!Number.isFinite(at)){notify('Data/hora inválida.');return;}const reason=prompt('Justificativa da correção (opcional):','Correção manual após confirmação no jogo/grupo')||'';void post('/api/intelligence/correct',{eventId:b.dataset.correctEvent,at,reason}).then(reload).then(()=>notify('Evento corrigido e registrado na auditoria.')).catch(err=>notify(err.message));});
+}
