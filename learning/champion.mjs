@@ -10,7 +10,7 @@ function methodRows(forecasts,name){
 export function comparePaired(forecasts,champion,challenger){
  const A=new Map(methodRows(forecasts,champion).map(x=>[x.forecastId,x])),B=new Map(methodRows(forecasts,challenger).map(x=>[x.forecastId,x]));
  const pairs=[...A.keys()].filter(k=>B.has(k)).map(k=>A.get(k).error-B.get(k).error);
- if(pairs.length<30)return {samples:pairs.length,significant:false,reason:'Amostra mínima: 30 previsões pareadas.'};
+ if(pairs.length<30)return {samples:pairs.length,significant:false,reason:'Amostra estatística mínima: 30 previsões pareadas.'};
  const d=mean(pairs),sd=Math.sqrt(variance(pairs,d)),se=sd/Math.sqrt(pairs.length),lower=d-1.96*se,upper=d+1.96*se;
  return {samples:pairs.length,meanErrorImprovement:round(d),ci95:[round(lower),round(upper)],significant:lower>1};
 }
@@ -22,7 +22,7 @@ export function championChallengerReport(forecasts,boss,world,current='adaptive_
   return {name,samples:x.length,mae:errors.length?round(mean(errors)):null,hitRate:x.length?round(100*x.filter(r=>r.hit).length/x.length):null};
  }).filter(x=>x.samples);
  const champion=stats.find(x=>x.name===current)||{name:current,samples:0,mae:null,hitRate:null};
- const challengers=stats.filter(x=>x.name!==current).map(x=>({...x,comparison:comparePaired(rows,current,x.name)})).sort((a,b)=>(a.mae??Infinity)-(b.mae??Infinity));
- const candidate=challengers.find(x=>x.comparison.significant&&x.mae!=null&&champion.mae!=null&&x.mae<champion.mae);
- return {champion,challengers,promotionRecommended:candidate?.name||null,minSamples:30};
+ const challengers=stats.filter(x=>x.name!==current).map(x=>{const comparison=comparePaired(rows,current,x.name),relativeImprovement=champion.mae&&x.mae!=null?100*(champion.mae-x.mae)/champion.mae:null,hitRateDelta=x.hitRate!=null&&champion.hitRate!=null?x.hitRate-champion.hitRate:null;return {...x,comparison,relativeImprovementPct:relativeImprovement==null?null:round(relativeImprovement),hitRateDelta:hitRateDelta==null?null:round(hitRateDelta)};}).sort((a,b)=>(a.mae??Infinity)-(b.mae??Infinity));
+ const candidate=challengers.find(x=>x.samples>=50&&x.comparison.significant&&x.mae!=null&&champion.mae!=null&&x.mae<champion.mae&&(x.relativeImprovementPct??0)>=5&&(x.hitRateDelta==null||x.hitRateDelta>=-2));
+ return {champion,challengers,promotionRecommended:candidate?.name||null,minSamples:50,promotionPolicy:{minimumRelativeMaeImprovementPct:5,minimumPairedSamples:50,maximumHitRateDropPoints:2,requiresSignificantPairedImprovement:true}};
 }
