@@ -47,11 +47,13 @@ try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
 const sessionToken = randomBytes(32).toString('hex');
 const heavyQueue=new TaskQueue({concurrency:1,maxPending:8});
-let persistQueue = Promise.resolve();
+const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSerializeMs:0,lastStateMs:0,lastRefreshMs:0};
+let persistPromise=null,pendingSnapshot=null;
 function persist() {
-  const snapshot=JSON.stringify(state);
-  persistQueue=persistQueue.then(async()=>{ await writeFile(join(DATA,'state.tmp'),snapshot); await rename(join(DATA,'state.tmp'),join(DATA,'state.json')); });
-  return persistQueue;
+  const serializeStart=performance.now();pendingSnapshot=JSON.stringify(state);performanceStats.lastSerializeMs=Math.round((performance.now()-serializeStart)*10)/10;performanceStats.lastPersistBytes=Buffer.byteLength(pendingSnapshot);
+  if(persistPromise)return persistPromise;
+  persistPromise=(async()=>{const started=performance.now();while(pendingSnapshot!==null){const snapshot=pendingSnapshot;pendingSnapshot=null;await writeFile(join(DATA,'state.tmp'),snapshot);await rename(join(DATA,'state.tmp'),join(DATA,'state.json'));}performanceStats.lastPersistMs=Math.round((performance.now()-started)*10)/10;performanceStats.maxPersistMs=Math.max(performanceStats.maxPersistMs,performanceStats.lastPersistMs);})().finally(()=>{persistPromise=null;});
+  return persistPromise;
 }
 const cache=new Map();
 let refreshPromise=null, lastError=null, monitoring=false, lastPoll=null, lastCollectionAt=null;
@@ -78,7 +80,7 @@ async function refresh(force=false) {
   if (!force && old && !old.catalogOnly && Date.now()-old.fetchedAt < 240000) return old;
   if (refreshPromise) { await refreshPromise; if (cache.get(world)) return cache.get(world); }
   refreshPromise=(async()=>{
-    const capturedWorld=world;
+    const refreshStarted=performance.now(),capturedWorld=world;
     if(!catalog.length) {
       const started=Date.now();const response=await fetch('https://cdn.rubinottools.com/json/bosses.json',{signal:AbortSignal.timeout(20000)});
       if(!response.ok){intelligence.sourceAttempt('rubinot-catalog',{ok:false,error:`HTTP ${response.status}`,latencyMs:Date.now()-started});throw new Error(`Catálogo indisponível (HTTP ${response.status})`);}
@@ -110,7 +112,7 @@ async function refresh(force=false) {
       state.officialHistory[capturedWorld]=history.slice(-10800);
       await persist();
     }catch(e){intelligence.sourceAttempt('rubinot-official',{ok:false,error:e.message});result.officialError=`Estatísticas oficiais indisponíveis: ${e.message}`;}
-    cache.set(capturedWorld,result);lastCollectionAt=Date.now();lastError=publicError;await persist();broadcast('update',{world:capturedWorld});return result;
+    cache.set(capturedWorld,result);lastCollectionAt=Date.now();lastError=publicError;performanceStats.lastRefreshMs=Math.round((performance.now()-refreshStarted)*10)/10;await persist();broadcast('update',{world:capturedWorld});return result;
   })();
   try { return await refreshPromise; } catch(e) { lastError=e.message;await persist().catch(()=>{});throw e; } finally { refreshPromise=null; }
 }
@@ -251,14 +253,14 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/boss-maps'){const name=url.searchParams.get('name'),boss=catalog.find(b=>b.name===name)||bosstiary.find(b=>b.name===name);if(!boss)throw new Error('Boss desconhecido');let result=mapCache.get(name);if(!result||Date.now()-result.at>3600000){result={...await fetchBossMaps(name,boss.locations||[]),at:Date.now()};mapCache.set(name,result);}return json(res,200,result);}
     if(url.pathname==='/api/group-image'){const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))throw new Error('Imagem inválida');const image=state.whatsapp.images.find(i=>i.id===id);if(!image)return json(res,404,{error:'Imagem não encontrada'});const bytes=await readFile(join(DATA,'group-images',id));res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(bytes);return;}
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
-    if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',errors24h:structured.errorsSince(86400000).length}));}
+    if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
     if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
     if(url.pathname==='/api/characters')return json(res,200,{names:state.characters});
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
-      let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
-      const intelligent=intelligence.snapshot(state.settings.world);
-      return json(res,200,{settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS});
+      const stateStarted=performance.now();let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
+      const intelligent=intelligence.snapshot(state.settings.world),payload={settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS};
+      performanceStats.lastStateMs=Math.round((performance.now()-stateStarted)*10)/10;return json(res,200,payload);
     }
     if(url.pathname==='/api/events') {
       res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'}); res.write(': connected\n\n'); clients.add(res);
