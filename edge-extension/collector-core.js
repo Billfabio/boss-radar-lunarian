@@ -25,8 +25,12 @@
   return [...scored.values()].sort((a,b)=>b.similarity-a.similarity).slice(0,5);
  }
  function match(text,compiled){
-  const out=new Map();for(const item of compiled.exact){if(containsPhrase(text,item.value)){const type=item.alias?'ALIAS':'EXACT',old=out.get(item.name);if(!old||old.matchType==='FUZZY')out.set(item.name,{boss_id:item.boss_id,name:item.name,matchType:type,similarity:1,matched:item.value});}}
-  return out.size?[...out.values()]:fuzzy(text,compiled);
+  const normalized=norm(text),padded=' '+normalized+' ',out=new Map();
+  for(const item of compiled.exact){if(padded.includes(' '+item.value+' ')){const type=item.alias?'ALIAS':'EXACT',old=out.get(item.name);if(!old||old.matchType==='FUZZY')out.set(item.name,{boss_id:item.boss_id,name:item.name,matchType:type,similarity:1,matched:item.value});}}
+  if(out.size)return [...out.values()];
+  const wordCount=normalized?normalized.split(' ').length:0,context=classify(text);
+  if(context==='UNKNOWN'&&wordCount>4)return [];
+  return fuzzy(normalized,compiled);
  }
  function classify(text){
   const raw=String(text||''),s=norm(raw);
