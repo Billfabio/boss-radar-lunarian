@@ -1,6 +1,7 @@
 import {mean,quantile,digest} from './feature-store.mjs';
+import {MODEL_FAMILY_VERSION} from '../prediction/version.mjs';
 export const MODEL_SPECS={
- adaptive_ensemble:{name:'Ensemble adaptativo',version:'adaptive-ensemble-v4.2',status:'Champion',features:['mean10','median','hour','weekday','driftScore']},
+ adaptive_ensemble:{name:'Ensemble adaptativo',version:MODEL_FAMILY_VERSION,status:'Champion',features:['mean10','median','hour','weekday','driftScore']},
  robust_interval:{name:'Intervalo robusto com memória longa',version:'1.0.0',status:'Shadow',features:['median','mean5','stddev','driftScore']},
  empirical_survival:{name:'Sobrevivência empírica',version:'1.0.0',status:'Shadow',features:['elapsedHours','median','samples']}
 };

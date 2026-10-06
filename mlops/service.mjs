@@ -8,7 +8,7 @@ import {appendLedger} from '../event-sourcing/ledger.mjs';
 export function ensureMLOps(intel){
  intel.mlops ||= {schema:1,datasets:{},registry:{},runs:[],errors:{},timeline:[],updates:{},rollouts:{},backtests:[]};
  const s=intel.mlops;if(s.schema!==1)throw new Error('Versão MLOps não suportada');
- for(const [id,spec] of Object.entries(MODEL_SPECS))s.registry[id] ||= {id,...spec,createdAt:Date.now(),parameters:{},datasetIds:[],promotedBy:null,promotedAt:null};
+ for(const [id,spec] of Object.entries(MODEL_SPECS)){s.registry[id] ||= {id,...spec,createdAt:Date.now(),parameters:{},datasetIds:[],promotedBy:null,promotedAt:null};const row=s.registry[id];if(row.version!==spec.version){row.versionHistory||=[];row.versionHistory.push({version:row.version,changedAt:Date.now(),metrics:row.metrics||null});row.version=spec.version;row.datasetIds=[];delete row.metrics;delete row.lastGate;row.lastGateByWorld={};}}
  return s;
 }
 function note(s,type,detail,at){const row={id:'change_'+digest({type,detail,at}),type,at,...detail};if(!s.timeline.some(x=>x.id===row.id))s.timeline.push(row);}

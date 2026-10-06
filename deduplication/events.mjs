@@ -10,8 +10,9 @@ export function findEvent(events,o){
 export function recomputeEvent(event,sources){
   const evidence=event.evidence||[],usable=evidence.filter(x=>!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status));
   const active=usable.length?usable:evidence;let miss=1,weightedAt=0,total=0,min=Infinity,max=-Infinity,manual=false;
-  const sourceIds=new Set();
-  for(const x of active){const s=sources[x.sourceId],quality=(x.quality?.score??50)/100,w=(s?.effectiveWeight??s?.baseWeight??.6)*x.confidence*quality;miss*=1-clamp(w);sourceIds.add(x.sourceId);weightedAt+=x.estimatedAt*w;total+=w;min=Math.min(min,x.startAt);max=Math.max(max,x.endAt);manual||=x.manual;}
+  const sourceIds=new Set(),contributions=new Map();
+  for(const x of active){const s=sources[x.sourceId],quality=(x.quality?.score??50)/100,w=(s?.effectiveWeight??s?.baseWeight??.6)*x.confidence*quality;sourceIds.add(x.sourceId);min=Math.min(min,x.startAt);max=Math.max(max,x.endAt);manual||=x.manual;const key=s?.dependencyGroup||x.sourceId,old=contributions.get(key);if(!old||w>old.w)contributions.set(key,{x,w});}
+  for(const {x,w} of contributions.values()){miss*=1-clamp(w);weightedAt+=x.estimatedAt*w;total+=w;}
   const base=1-miss,span=Math.max(0,max-min),penalty=span<=45*60000?1:span<=3*3600000?.96:span<=24*3600000?.88:.78;
   event.eventType=evidence.some(x=>x.eventType==='kill')?'kill':evidence.some(x=>x.eventType==='appearance')?'appearance':'absence';
   const anomalous=evidence.filter(x=>x.anomaly).length,anomalyPenalty=anomalous===evidence.length?.55:anomalous?Math.max(.7,1-anomalous/evidence.length*.25):1;

@@ -10,6 +10,18 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: boss_ci
+          POSTGRES_PASSWORD: ci-local-validation
+          POSTGRES_DB: boss_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U boss_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -28,6 +40,16 @@ jobs:
         run: pnpm run check:intelligence
       - name: Run tests
         run: pnpm test
+      - name: Validate additive PostgreSQL migrations and idempotency
+        env:
+          PGPASSWORD: ci-local-validation
+        run: |
+          psql -h localhost -U boss_ci -d boss_ci -v ON_ERROR_STOP=1 -f database/schema.sql
+          for pass in 1 2; do
+            for migration in database/migrations/*.sql; do
+              psql -h localhost -U boss_ci -d boss_ci -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          done
       - name: Intelligence temporal regression gate
         run: pnpm run test:intelligence-regression
       - name: Intelligence synthetic load benchmark

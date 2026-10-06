@@ -136,6 +136,7 @@ async function poll() {
   monitoring=true;
   try {
     const data=await refresh(); lastPoll=Date.now();
+    if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}));}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
     if (state.settings.world !== data.world || !state.settings.enabled || lastError) return;
     const now=Date.now();
     for (const prediction of data.pending) {
@@ -255,6 +256,9 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/intelligence/experiment'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;if(!['robust_interval','empirical_survival'].includes(input.modelId))throw new Error('Modelo inválido');return json(res,200,await heavyQueue.enqueue('experiment:'+world,()=>intelligence.experiment(world,input.modelId),{payload:{world,modelId:input.modelId}}));}
       if(url.pathname==='/api/intelligence/retry'){const row=state.pipelineDeadLetters.find(x=>x.id===input.id&&x.status==='failed');if(!row||!row.name.startsWith('experiment:'))throw new Error('Falha não reprocessável por esta operação');const result=await heavyQueue.enqueue(row.name,()=>intelligence.experiment(row.payload.world,row.payload.modelId),{payload:row.payload});row.status='reprocessed';row.reprocessedAt=Date.now();await persist();return json(res,200,result);}
       if(url.pathname==='/api/intelligence/replay'){if(typeof input.forecastId!=='string'||input.forecastId.length>200)throw new Error('Previsão inválida');return json(res,200,intelligence.replay(input.forecastId));}
+      if(url.pathname==='/api/intelligence/discovery/run'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await heavyQueue.enqueue('discovery:'+world,()=>intelligence.discoveryWrite('run',{world})));}
+      if(url.pathname==='/api/intelligence/discovery/historical'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await heavyQueue.enqueue('historical:'+world,()=>intelligence.historical({...input,world})));}
+      if(url.pathname.startsWith('/api/intelligence/discovery/')){const operation=url.pathname.split('/').at(-1);if(['candidate','review','sample','context','coverage'].includes(operation)){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await intelligence.discoveryWrite(operation,{...input,world}));}}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {
@@ -272,6 +276,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
     if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',storage:storageHealth,errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
     if(url.pathname==='/api/intelligence/mlops')return json(res,200,intelligence.mlops(state.settings.world));
+    if(url.pathname==='/api/intelligence/discovery')return json(res,200,await heavyQueue.enqueue('discovery-dashboard:'+state.settings.world,()=>intelligence.discovery(state.settings.world)));
     if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
     if(url.pathname==='/api/characters')return json(res,200,{names:state.characters});
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
@@ -293,7 +298,7 @@ const server=http.createServer(async(req,res)=>{
       if(!sprite){const response=await fetch('https://rubinot.com.br/api/outfit?'+key,{signal:AbortSignal.timeout(15000)});if(!response.ok||!response.headers.get('content-type')?.startsWith('image/png'))throw new Error('Aparência indisponível');const bytes=Buffer.from(await response.arrayBuffer());if(bytes.length>2000000)throw new Error('Imagem muito grande');sprite={bytes};if(outfitCache.size>200)outfitCache.clear();outfitCache.set(key,sprite);}
       res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(sprite.bytes);return;
     }
-    const files={'/':'index.html','/sw.js':'sw.js','/logic.mjs':'logic.mjs','/bosstiary.mjs':'bosstiary.mjs','/boss-map-ui.mjs':'boss-map-ui.mjs','/group-checks.mjs':'group-checks.mjs','/group-ui.mjs':'group-ui.mjs','/whatsapp-ui.mjs':'whatsapp-ui.mjs','/notification-flow.mjs':'notification-flow.mjs','/character-ui.mjs':'character-ui.mjs','/intelligence-ui.mjs':'intelligence-ui.mjs','/app.js':'app.js','/styles.css':'styles.css'};
+    const files={'/':'index.html','/sw.js':'sw.js','/logic.mjs':'logic.mjs','/bosstiary.mjs':'bosstiary.mjs','/boss-map-ui.mjs':'boss-map-ui.mjs','/group-checks.mjs':'group-checks.mjs','/group-ui.mjs':'group-ui.mjs','/whatsapp-ui.mjs':'whatsapp-ui.mjs','/notification-flow.mjs':'notification-flow.mjs','/character-ui.mjs':'character-ui.mjs','/intelligence-ui.mjs':'intelligence-ui.mjs','/discovery-ui.mjs':'discovery-ui.mjs','/app.js':'app.js','/styles.css':'styles.css'};
     if(url.pathname==='/boss-radar-extension.zip'){const content=await readFile(join(ROOT,'boss-radar-extension.zip'));res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="boss-radar-extension.zip"','Cache-Control':'no-store'});res.end(content);return;}
     if(!files[url.pathname]) return json(res,404,{error:'Página não encontrada'});
     const content=await readFile(join(ROOT,files[url.pathname]));

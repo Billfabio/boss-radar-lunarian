@@ -4,16 +4,17 @@ export function refreshEffectiveWeights(sources){for(const s of Object.values(so
 export function learnFromEvent(event,sources){
   if(!event||!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt)||['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(event.qualityStatus))return;
   const evidence=event.evidence||[],correction=evidence.filter(x=>x.manual&&x.detail?.correction).sort((a,b)=>(a.reportedAt||0)-(b.reportedAt||0)).at(-1);
+  const evaluatedSources=new Set(evidence.filter(x=>x.evaluated).map(x=>x.sourceId));
   for(const x of evidence){
-    if(x.evaluated)continue;const s=sources[x.sourceId];if(!s)continue;
+    if(x.evaluated||evaluatedSources.has(x.sourceId))continue;const s=sources[x.sourceId];if(!s)continue;
     if(x.quality&&!x.quality.eligibleForLearning)continue;
     if(x.manual&&x.detail?.correction){x.evaluated=true;x.referenceEvidence='ground_truth_correction';continue;}
-    const peers=evidence.filter(y=>y!==x&&y.sourceId!==x.sourceId&&!y.anomaly&&(!y.quality||y.quality.eligibleForLearning));
+    const groups=new Map();for(const y of evidence){if(y!==x&&y.sourceId!==x.sourceId&&(sources[y.sourceId]?.dependencyGroup||y.sourceId)!==(s.dependencyGroup||x.sourceId)&&!y.anomaly&&(!y.quality||y.quality.eligibleForLearning)&&!groups.has(sources[y.sourceId]?.dependencyGroup||y.sourceId))groups.set(sources[y.sourceId]?.dependencyGroup||y.sourceId,y);}const peers=[...groups.values()];
     const reference=correction&&correction!==x?correction.estimatedAt:(peers.length?peers.reduce((n,y)=>n+y.estimatedAt,0)/peers.length:null);
     if(!Number.isFinite(reference))continue;
     const tolerance=x.precision==='day'?18*3600000:x.precision==='range'?6*3600000:x.precision==='hour'?90*60000:30*60000;
     const error=Math.abs(x.estimatedAt-reference),score=clamp(1-error/Math.max(1,tolerance*2));
-    s.alpha+=score;s.beta+=1-score;x.evaluated=true;x.errorMs=error;x.agreementScore=score;x.referenceEvidence=correction&&correction!==x?'manual_correction':'independent_sources';
+    s.alpha+=score;s.beta+=1-score;x.evaluated=true;evaluatedSources.add(x.sourceId);x.errorMs=error;x.agreementScore=score;x.referenceEvidence=correction&&correction!==x?'manual_correction':'independent_sources';
     const delayMs=Number.isFinite(x.collectedAt)&&Number.isFinite(x.sourceObservedAt)?Math.max(0,x.collectedAt-x.sourceObservedAt):null;
     noteEvidenceOutcome(sources,x.sourceId,{correct:score>=.65,errorMs:error,delayMs,consistency:score,precision:x.precision,at:x.processedAt||event.updatedAt||event.estimatedAt||Date.now()});
   }

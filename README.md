@@ -135,3 +135,10 @@ O estado pessoal, imagens, chaves de push e dados privados permanecem fora do c�
 ## Princípio do projeto
 
 **Mais dados → mais conhecimento → padrões melhores → previsões melhores → maior precisão.**
+# Data Intelligence 4.4
+
+A área Inteligência → DATA INTELLIGENCE contém eventos canônicos versionados, timestamps separados, pesquisa de sinais com walk-forward/holdouts/FDR, ablação de challengers de uma variável, grafos de bosses/fontes, fontes candidatas isoladas em Shadow, skill de previsibilidade, probabilidades experimentais e reprodução histórica sem resultados futuros. Nenhuma descoberta nova entra automaticamente em produção.
+
+Janelas negativas e o dataset probabilístico exigem monitoramento contínuo verificado; checagem isolada ou previsão expirada não comprovam ausência. Horários desconhecidos ficam nulos. Registros apenas de morte não são tratados como spawn preciso. Sem histórico real, cobertura ou calibração, o painel informa insuficiência.
+
+Consulte [RELATORIO-DATA-INTELLIGENCE.md](RELATORIO-DATA-INTELLIGENCE.md) para alcance das doze prioridades, resultados disponíveis, fontes públicas candidatas, APIs, requisitos dos gates, validação e etapas ainda pendentes. A migration PostgreSQL `database/migrations/004_signal_discovery.sql` é aditiva; o runtime permanece no armazenamento legado.

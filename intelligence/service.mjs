@@ -22,6 +22,7 @@ import {modelsForPrediction,proposeOnlineUpdate,monitorCanary} from '../mlops/on
 import {buildFeatures} from '../mlops/feature-store.mjs';
 import {selfCritique} from '../mlops/analysis.mjs';
 import {survivalCurve} from '../mlops/models.mjs';
+import {ensureDiscovery,captureCanonical,discoveryDashboard,discover,historicalReplay,registerCandidate,sourceSample,addContext,addCoverage,reviewCandidate} from '../discovery/service.mjs';
 
 const trimOldestFirst=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
 const trimNewestFirst=(a,n)=>{if(a.length>n)a.length=n;return a;};
@@ -38,7 +39,8 @@ export function createIntelligence({state,persist,broadcast}){
  const backtestCache=new Map(),predictionCache=new Map();let intelligenceRevision=0,lastPredictionLatencyMs=null;
  const invalidatePredictions=()=>{intelligenceRevision++;predictionCache.clear();};
  const predictionsFor=world=>{const now=Date.now(),key=world+'|'+intelligenceRevision+'|'+Math.floor(now/60000);if(predictionCache.has(key))return predictionCache.get(key);const started=performance.now(),rows=buildAdaptivePredictions(intel.events,world,intel.models).map(p=>{const chosen=modelsForPrediction(intel,p.boss,world,p.baseEventId||p.boss),prediction=chosen.rollout?.selected?predictAdaptive(intel.events,p.boss,world,chosen.models,now):p;return governedPrediction(calibratedPrediction(prediction),now);});lastPredictionLatencyMs=performance.now()-started;predictionCache.clear();predictionCache.set(key,rows);return rows;};
- const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
+ ensureDiscovery(intel);captureCanonical(intel);
+ const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);captureCanonical(intel);await persist();};
 
  function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||'',circuitState:intel.sources[id]?.circuitState},result.at||Date.now());}
  function sourceReady(id,now=Date.now()){return canAttemptSource(intel.sources,id,now);}
@@ -211,5 +213,7 @@ export function createIntelligence({state,persist,broadcast}){
    return {boss,world,prediction,governance,calibration:calibrationReport(intel.forecasts,world,boss,{modelVersion:MODEL_FAMILY_VERSION}),drift:detectDrift(intel.events,boss,world),events:recent.map(e=>({id:e.id,estimatedAt:e.estimatedAt,status:e.status,qualityStatus:e.qualityStatus,dataQualityScore:e.dataQualityScore,confidence:Math.round((e.confidence||0)*100),sourceCount:e.sourceCount,confirmations:e.confirmations,confirmingSources:e.confirmingSources||[]})),intervals,model};
  }
  async function experiment(world,modelId){const result=temporalExperiment(intel,world,modelId);evaluateModel(intel,modelId,world);await save();return result;}
- return {sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation,mlops:world=>dashboard(intel,world),replay:id=>replayPrediction(intel,id),experiment};
+ async function discoveryWrite(operation,input){let result;if(operation==='run')result=discover(intel,input.world);else if(operation==='candidate')result=registerCandidate(intel.discovery,input);else if(operation==='review')result=reviewCandidate(intel.discovery,input);else if(operation==='sample')result=sourceSample(intel.discovery,input);else if(operation==='context')result=addContext(intel.discovery,input);else if(operation==='coverage')result=addCoverage(intel.discovery,input);else throw new Error('Operação inválida');appendLedger(intel.ledger,'discovery_'+operation,{id:result.id||null,world:input.world||null,at:Date.now()});await save();return result;}
+ const discoveryDue=world=>{const d=intel.discovery,last=d.runs.filter(r=>r.world===world).at(-1);return d.coverage.some(c=>c.world===world&&!c.candidateId)&&Object.values(d.current).filter(v=>v.event.world===world&&v.event.status==='CONFIRMADO').length>=10&&(!last||Date.now()-last.at>=86400000);};
+ return {sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation,mlops:world=>dashboard(intel,world),replay:id=>replayPrediction(intel,id),experiment,discovery:world=>discoveryDashboard(intel,world),discoveryWrite,discoveryDue,historical:input=>historicalReplay(intel.discovery,input.world,input.startAt,input.endAt,input.stepMinutes,intel.mlops.runs)};
 }
