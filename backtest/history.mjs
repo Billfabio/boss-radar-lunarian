@@ -18,7 +18,7 @@ function methodsFor(prior){
 }
 function summarize(rows){
  const errors=rows.map(x=>x.errorMinutes).filter(Number.isFinite),hits=rows.filter(x=>x.windowHit).length;
- return {samples:rows.length,maeMinutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,medianErrorMinutes:errors.length?Math.round(q(errors,.5)*10)/10:null,windowAccuracy:rows.length?Math.round(1000*hits/rows.length)/10:null};
+ return {samples:rows.length,preciseSamples:errors.length,maeMinutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,medianErrorMinutes:errors.length?Math.round(q(errors,.5)*10)/10:null,windowAccuracy:rows.length?Math.round(1000*hits/rows.length)/10:null};
 }
 export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}={}){
  const bosses=[...new Set(events.filter(e=>e.world===world&&confirmed(e)).map(e=>e.boss))],all=[],perBoss=[],models={};
@@ -37,10 +37,10 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
     const rec={boss,world,eventId:actual.id,actualAt:actual.estimatedAt,actualPrecision:minuteEligible?'time':'day',trainSamples:i,model:m.name,predictedAt:Math.round(m.predictedAt),errorMinutes:error==null?null:Math.round(error*10)/10,windowHit,confidence:adaptive.status==='ready'?adaptive.confidence:null};
     results.push(rec);all.push(rec);
    }
-   if(adaptive.status==='ready')for(const m of adaptive.methods||[])if(Number.isFinite(m.predictedAt))learnMethodResult(models,boss,world,m.name,Math.abs(actual.estimatedAt-m.predictedAt)/60000,actual.estimatedAt>=adaptive.windowStart&&actual.estimatedAt<=adaptive.windowEnd,actual.estimatedAt);
+   if(adaptive.status==='ready'&&precise(actual))for(const m of adaptive.methods||[])if(Number.isFinite(m.predictedAt))learnMethodResult(models,boss,world,m.name,Math.abs(actual.estimatedAt-m.predictedAt)/60000,actual.estimatedAt>=adaptive.windowStart&&actual.estimatedAt<=adaptive.windowEnd,actual.estimatedAt);
   }
   const names=[...new Set(results.map(x=>x.model))],modelStats=names.map(name=>({model:name,...summarize(results.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
-  perBoss.push({boss,events:rows.length,testedEvents:Math.max(0,rows.length-minTrain),bestModel:modelStats[0]?.model||null,models:modelStats});
+  const best=modelStats.find(x=>x.maeMinutes!=null);perBoss.push({boss,events:rows.length,testedEvents:Math.max(0,rows.length-minTrain),bestModel:best?.model||null,models:modelStats});
  }
  const overallModels=[...new Set(all.map(x=>x.model))].map(name=>({model:name,...summarize(all.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
  return {world,generatedAt:Date.now(),eventsEvaluated:new Set(all.map(x=>x.eventId)).size,preciseEventsEvaluated:new Set(all.filter(x=>x.actualPrecision==='time').map(x=>x.eventId)).size,predictionsEvaluated:all.length,overallModels,perBoss:perBoss.sort((a,b)=>(b.testedEvents||0)-(a.testedEvents||0)||a.boss.localeCompare(b.boss)),recentResults:all.slice(-500)};
