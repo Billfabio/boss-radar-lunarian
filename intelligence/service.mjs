@@ -34,9 +34,11 @@ export function createIntelligence({state,persist,broadcast}){
 
  function calibratedPrediction(prediction){
    if(prediction.status!=='ready')return prediction;
-   let calibration=calibrateConfidence(prediction.confidence,intel.forecasts,prediction.world,prediction.boss);
-   if(calibration.samples<20)calibration=calibrateConfidence(prediction.confidence,intel.forecasts,prediction.world,null);
-   return {...prediction,confidenceRaw:prediction.confidence,confidence:calibration.calibrated,calibration};
+   const raw=prediction.confidence;let calibration=calibrateConfidence(raw,intel.forecasts,prediction.world,prediction.boss);
+   if(calibration.samples<20)calibration=calibrateConfidence(raw,intel.forecasts,prediction.world,null);
+   const adjustment=Math.round((calibration.calibrated-raw)*10)/10,breakdown=prediction.confidenceBreakdown?{...prediction.confidenceBreakdown,rawTotal:raw,calibrationAdjustment:adjustment,total:calibration.calibrated}:null;
+   const explain=[...(prediction.explain||[])];if(calibration.method!=='identity'&&calibration.method!=='insufficient_calibration_data')explain.push(`Calibração histórica: confiança bruta ${raw}% ajustada para ${calibration.calibrated}% usando ${calibration.samples} previsões resolvidas comparáveis.`);else explain.push(`Calibração histórica ainda insuficiente (${calibration.samples} amostras); confiança bruta mantida.`);
+   return {...prediction,confidenceRaw:raw,confidence:calibration.calibrated,confidenceBreakdown:breakdown,calibration,explain};
  }
  function upsertForecast(event){
    if(!event||!/^confirmed_/.test(event.status)||event.eventType==='absence'||['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(event.qualityStatus))return null;
