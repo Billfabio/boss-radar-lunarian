@@ -33,5 +33,9 @@
   return 'UNKNOWN';
  }
  const fingerprintMaterial=({groupKey='',authorHash='',messageTimestamp='',normalizedText='',messageKey=''})=>[groupKey,authorHash,messageTimestamp,messageKey,norm(normalizedText)].join('|');
- globalThis.BossCollectorCore={norm,compact,similarity,compileDictionary,match,classify,fingerprintMaterial};
+ function pruneProcessed(entries=[],now=Date.now(),ttlMs=24*3600000,max=10000){
+  const map=new Map();for(const row of entries||[]){const key=String(row?.key||''),at=Number(row?.at)||0;if(!key||now-at>ttlMs)continue;const old=map.get(key);if(!old||at>old.at)map.set(key,{key,at});}
+  return [...map.values()].sort((a,b)=>b.at-a.at).slice(0,max);
+ }
+ globalThis.BossCollectorCore={norm,compact,similarity,compileDictionary,match,classify,fingerprintMaterial,pruneProcessed};
 })();
