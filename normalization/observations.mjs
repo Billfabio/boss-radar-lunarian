@@ -14,11 +14,12 @@ export function makeObservation(input){
   if(!Number.isFinite(startAt)&&Number.isFinite(estimatedAt))startAt=precision==='day'?Date.parse(localDate(estimatedAt)+'T00:00:00-03:00'):estimatedAt;
   if(!Number.isFinite(endAt)&&Number.isFinite(estimatedAt))endAt=precision==='day'?Date.parse(localDate(estimatedAt)+'T23:59:59-03:00'):estimatedAt;
   if(!Number.isFinite(startAt)||!Number.isFinite(endAt)||endAt<startAt)throw new Error('Observação sem intervalo temporal válido');
-  return {evidenceId:String(input.evidenceId),boss:String(input.boss),world:String(input.world),sourceId:String(input.sourceId),eventType,precision,startAt,endAt,estimatedAt:Number.isFinite(estimatedAt)?estimatedAt:Math.round((startAt+endAt)/2),reportedAt:Number(input.reportedAt)||Date.now(),manual:!!input.manual,confidence:Math.max(.05,Math.min(1,Number(input.confidence)||.5)),detail:input.detail||null};
+  const processedAt=Number(input.processedAt)||Date.now(),reportedAt=Number(input.reportedAt)||processedAt,sourceObservedAt=Number(input.sourceObservedAt)||Number.isFinite(estimatedAt)?Number(input.sourceObservedAt)||estimatedAt:reportedAt,collectedAt=Number(input.collectedAt)||reportedAt;
+  return {evidenceId:String(input.evidenceId),boss:String(input.boss),world:String(input.world),sourceId:String(input.sourceId),sourceRef:String(input.sourceRef||input.detail?.sourceRef||''),collectionMethod:String(input.collectionMethod||input.detail?.collectionMethod||'unknown'),confirmedBy:input.confirmedBy?String(input.confirmedBy).slice(0,120):null,eventType,precision,startAt,endAt,estimatedAt:Number.isFinite(estimatedAt)?estimatedAt:Math.round((startAt+endAt)/2),sourceObservedAt,collectedAt,reportedAt,processedAt,manual:!!input.manual,confidence:Math.max(.05,Math.min(1,Number(input.confidence)||.5)),detail:input.detail||null};
 }
 export function publicHistoryObservation(world,boss,row,index){
   const at=parseDateOnly(row.date);if(!Number.isFinite(at))return null;const date=localDate(at),start=Date.parse(date+'T00:00:00-03:00'),end=Date.parse(date+'T23:59:59-03:00');
-  return makeObservation({evidenceId:`otb|${world}|${canonical(boss)}|${date}|${index}`,boss,world,sourceId:'otbosstracker',eventType:'kill',precision:'day',startAt:start,endAt:end,confidence:row.approximate?.55:.72,detail:{rawDate:row.date,approximate:!!row.approximate}});
+  return makeObservation({evidenceId:`otb|${world}|${canonical(boss)}|${date}|${index}`,boss,world,sourceId:'otbosstracker',sourceRef:'https://otbosstracker.com/data/bosses.json',collectionMethod:'public_json',eventType:'kill',precision:'day',startAt:start,endAt:end,sourceObservedAt:at,confidence:row.approximate?.55:.72,detail:{rawDate:row.date,approximate:!!row.approximate}});
 }
 export function checkObservation(check){
   if(!check||!['encontrado','morto','vazio'].includes(check.result))return null;
@@ -26,6 +27,6 @@ export function checkObservation(check){
   const precision=check.precision==='day'||!check.time&&check.origin!=='manual'?'day':'minute';
   const sourceId=check.origin==='whatsapp'?'whatsapp-group':check.origin==='group'?'group-import':'manual-panel';
   const eventType=check.result==='vazio'?'absence':check.result==='morto'?'kill':'appearance';
-  return makeObservation({evidenceId:`check|${check.id||checkKey(check)}`,boss:check.boss,world:check.world,sourceId,eventType,precision,estimatedAt:at,manual:sourceId!=='whatsapp-group',confidence:eventType==='absence'?.72:sourceId==='manual-panel'?.96:.82,detail:{result:check.result,batchId:check.batchId||null}});
+  return makeObservation({evidenceId:`check|${check.id||checkKey(check)}`,boss:check.boss,world:check.world,sourceId,sourceRef:check.origin==='whatsapp'?'whatsapp://authorized-group':'boss-radar://panel',collectionMethod:check.origin==='whatsapp'?'browser_extension':check.origin==='group'?'group_batch':'manual_panel',confirmedBy:check.actor||null,eventType,precision,estimatedAt:at,sourceObservedAt:at,collectedAt:Number(check.recordedAt)||Number(check.at)||Date.now(),manual:sourceId!=='whatsapp-group',confidence:eventType==='absence'?.72:sourceId==='manual-panel'?.96:.82,detail:{result:check.result,batchId:check.batchId||null}});
 }
 function checkKey(c){return [c.world,canonical(c.boss),c.date||localDate(c.at),c.time||'',c.result].join('|');}
