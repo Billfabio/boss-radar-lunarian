@@ -92,7 +92,10 @@ async function refresh(force=false) {
     }
     if(!cache.has(capturedWorld))cache.set(capturedWorld,{world:capturedWorld,pending:[],bosses:catalog,fetchedAt:Date.now(),catalogOnly:true});
     let result,publicError=null;const previous=cache.get(capturedWorld),publicStarted=Date.now();
-    try{
+    if(!intelligence.sourceReady('otbosstracker')){
+      publicError='Histórico público temporariamente suspenso pelo circuit breaker.';
+      result=previous?{...previous,pending:[...(previous.pending||[])],bosses:(previous.bosses||catalog).map(b=>({...b,history:[...(b.history||[])]})),stale:true,staleFrom:previous.staleFrom||previous.fetchedAt,fetchedAt:Date.now(),publicError}:{world:capturedWorld,pending:[],bosses:catalog.map(b=>({...b,history:[]})),fetchedAt:Date.now(),catalogOnly:true,stale:true,publicError};
+    }else try{
       const response=await fetch(PUBLIC_SOURCE,{signal:AbortSignal.timeout(20000),headers:{Accept:'application/json'}});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       result=normalizePublic(await response.json(),capturedWorld,catalog);intelligence.sourceAttempt('otbosstracker',{ok:true,records:result.bosses.reduce((n,b)=>n+(b.history?.length||0),0),latencyMs:Date.now()-publicStarted});await intelligence.ingestPublic(result);
@@ -100,7 +103,7 @@ async function refresh(force=false) {
       publicError=`Histórico público indisponível: ${e.message}`;intelligence.sourceAttempt('otbosstracker',{ok:false,error:e.message,latencyMs:Date.now()-publicStarted});
       result=previous?{...previous,pending:[...(previous.pending||[])],bosses:(previous.bosses||catalog).map(b=>({...b,history:[...(b.history||[])]})),stale:true,staleFrom:previous.staleFrom||previous.fetchedAt,fetchedAt:Date.now(),publicError}:{world:capturedWorld,pending:[],bosses:catalog.map(b=>({...b,history:[]})),fetchedAt:Date.now(),catalogOnly:true,stale:true,publicError};
     }
-    try {
+    if(!intelligence.sourceReady('rubinot-official')){result.officialError='Estatísticas oficiais temporariamente suspensas pelo circuit breaker.';}else try {
       const officialStarted=Date.now();const official=await fetch(officialURL(capturedWorld),{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json'}});
       if(!official.ok)throw new Error(`HTTP ${official.status}`);
       state.officialSnapshots ||= {};
