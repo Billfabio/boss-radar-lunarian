@@ -156,7 +156,7 @@ test('push endpoints reject arbitrary hosts and credentialed URLs',()=>{
 });
 
 
-import {ensureSources,sourceWeight} from './sources/registry.mjs';
+import {ensureSources,sourceWeight,noteSource,canAttemptSource} from './sources/registry.mjs';
 import {makeObservation} from './normalization/observations.mjs';
 import {mergeObservation} from './deduplication/events.mjs';
 import {predictBoss} from './prediction/engine.mjs';
@@ -343,4 +343,76 @@ test('signed public session expires and changes with password',()=>{
 test('rate limiter rejects requests above configured window and resets later',()=>{
  const limiter=new RateLimiter({windowMs:1000,max:2});
  assert.equal(limiter.check('ip',0).allowed,true);assert.equal(limiter.check('ip',1).allowed,true);assert.equal(limiter.check('ip',2).allowed,false);assert.equal(limiter.check('ip',1001).allowed,true);
+});
+
+
+import {assessObservation} from './data-quality/engine.mjs';
+import {consensusForEvidence} from './consensus/engine.mjs';
+import {calibrationReport,calibrateConfidence} from './learning/calibration.mjs';
+import {detectDrift} from './learning/drift.mjs';
+import {championChallengerReport} from './learning/champion.mjs';
+import {probabilityDistribution} from './prediction/distribution.mjs';
+import {appendLedger,verifyLedger} from './event-sourcing/ledger.mjs';
+
+test('data quality score rewards traceable precise evidence and quarantines weak anomalous evidence',()=>{
+ const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
+ const at=Date.now(),good=makeObservation({evidenceId:'q-good',boss:'Q',world:'Lunarian',sourceId:'manual-panel',sourceRef:'boss-radar://panel',collectionMethod:'manual_panel',eventType:'kill',precision:'minute',estimatedAt:at,sourceObservedAt:at,collectedAt:at,reportedAt:at,processedAt:at,manual:true,confidence:.97});
+ const bad=makeObservation({evidenceId:'q-bad',boss:'Q',world:'Lunarian',sourceId:'external-api',eventType:'kill',precision:'day',estimatedAt:at-30*86400000,reportedAt:at,processedAt:at,confidence:.3});bad.anomaly={kind:'impossible_outlier'};
+ const a=assessObservation(good,{sources,events:[],now:at}),b=assessObservation(bad,{sources,events:[],now:at});
+ assert.ok(a.score>=85);assert.ok(b.score<55);assert.equal(b.eligibleForLearning,false);
+});
+
+test('consensus accepts nearby precise sources and marks multi-hour disagreement as conflict',()=>{
+ const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
+ const at=Date.now(),mk=(id,source,offset)=>{const x=makeObservation({evidenceId:id,boss:'C',world:'Lunarian',sourceId:source,eventType:'kill',precision:'minute',estimatedAt:at+offset,confidence:.9});x.quality={score:90,status:'CONFIRMADO',eligibleForLearning:true};return x;};
+ const good=consensusForEvidence([mk('a','manual-panel',0),mk('b','whatsapp-group',5*60000)],sources);assert.equal(good.conflict,false);assert.ok(good.centerAt>=at&&good.centerAt<=at+5*60000);
+ const bad=consensusForEvidence([mk('c','manual-panel',0),mk('d','whatsapp-group',4*3600000)],sources);assert.equal(bad.conflict,true);assert.equal(bad.status,'CONFLITANTE');
+});
+
+test('source circuit breaker opens after repeated failures and half-opens after cooldown',()=>{
+ const sources=ensureSources({}),t=Date.now();for(let i=0;i<3;i++)noteSource(sources,'otbosstracker',{ok:false,error:'offline',at:t+i});
+ assert.equal(sources.otbosstracker.circuitState,'OPEN');assert.equal(canAttemptSource(sources,'otbosstracker',t+1000),false);
+ assert.equal(canAttemptSource(sources,'otbosstracker',sources.otbosstracker.suspendedUntil+1),true);assert.equal(sources.otbosstracker.circuitState,'HALF_OPEN');
+ noteSource(sources,'otbosstracker',{ok:true,at:sources.otbosstracker.suspendedUntil+2});assert.equal(sources.otbosstracker.circuitState,'CLOSED');
+});
+
+test('confidence calibration reports empirical gaps and adjusts only after enough resolved forecasts',()=>{
+ const rows=[];for(let i=0;i<30;i++)rows.push({world:'Lunarian',boss:'Cal',resolvedAt:i+1,confidenceRaw:90,windowHit:i<21});
+ const report=calibrationReport(rows,'Lunarian','Cal');const bin=report.bins.find(x=>x.min===90);assert.equal(bin.samples,30);assert.equal(bin.actual,70);
+ const calibrated=calibrateConfidence(90,rows,'Lunarian','Cal');assert.ok(calibrated.calibrated<90);assert.equal(calibrated.method,'empirical_beta_shrinkage');
+});
+
+test('drift detector identifies sustained interval regime change and reduces historical weight',()=>{
+ const H=3600000,events=[];let at=Date.parse('2026-01-01T12:00:00-03:00');
+ for(let i=0;i<20;i++){events.push({id:'old-d'+i,boss:'Drift',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',qualityStatus:'CONFIRMADO',evidence:[{precision:'minute'}]});at+=72*H;}
+ for(let i=0;i<10;i++){events.push({id:'new-d'+i,boss:'Drift',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',qualityStatus:'CONFIRMADO',evidence:[{precision:'minute'}]});at+=54*H;}
+ const d=detectDrift(events,'Drift','Lunarian');assert.equal(d.detected,true);assert.ok(d.historyWeightMultiplier<1);assert.ok(d.recentWeightMultiplier>1);
+});
+
+test('prediction abstains when sample is below minimum instead of inventing a time',()=>{
+ const H=3600000,base=Date.now()-10*86400000,events=[];for(let i=0;i<4;i++)events.push({id:'abs'+i,boss:'Abstain',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,dataQualityScore:90,evidence:[{precision:'minute'}]});
+ const p=predictAdaptive(events,'Abstain','Lunarian',{});assert.equal(p.status,'insufficient');assert.match(p.reason,/DADOS INSUFICIENTES/);assert.equal(p.likelyAt,undefined);
+});
+
+test('probability distribution is normalized and has no fixed random filler',()=>{
+ const at=Date.now(),rows=probabilityDistribution([{predictedAt:at,weight:1,normalizedWeight:.6},{predictedAt:at+30*60000,weight:.6,normalizedWeight:.4}],at,2*3600000,{slotMinutes:30,slots:8});
+ const total=rows.reduce((n,x)=>n+x.probability,0);assert.ok(Math.abs(total-100)<=.2);assert.equal(rows.length,8);assert.ok(rows.every(x=>x.probability>=0));
+});
+
+test('champion challenger requires paired sample significance before recommending promotion',()=>{
+ const base=Date.now(),small=[],large=[];
+ for(let i=0;i<10;i++)small.push({id:'s'+i,boss:'Gov',world:'Lunarian',resolvedAt:base+i,errorMinutes:20,windowHit:true,challengers:[{name:'better',actualErrorMinutes:5,hit:true}]});
+ assert.equal(championChallengerReport(small,'Gov','Lunarian').promotionRecommended,null);
+ for(let i=0;i<60;i++)large.push({id:'l'+i,boss:'Gov',world:'Lunarian',resolvedAt:base+i,errorMinutes:25+(i%3),windowHit:i%3!==0,challengers:[{name:'better',actualErrorMinutes:8+(i%2),hit:true}]});
+ assert.equal(championChallengerReport(large,'Gov','Lunarian').promotionRecommended,'better');
+});
+
+test('event ledger is append-only hash chained and detects tampering',()=>{
+ const ledger=[];appendLedger(ledger,'evidence_received',{id:'1'},1);appendLedger(ledger,'event_corrected',{id:'1',at:2},2);assert.equal(verifyLedger(ledger).valid,true);
+ ledger[0].payload.id='changed';assert.equal(verifyLedger(ledger).valid,false);
+});
+
+test('backtest exposes baselines and temporal development validation test cohorts',()=>{
+ const H=3600000,base=Date.parse('2026-01-01T10:00:00-03:00'),events=[];for(let i=0;i<30;i++)events.push({id:'tb'+i,boss:'Temporal',world:'Lunarian',eventType:'kill',estimatedAt:base+i*(72-(i>18?6:0))*H,status:'confirmed_auto',qualityStatus:'CONFIRMADO',confidence:.9,dataQualityScore:90,evidence:[{precision:'minute'}]});
+ const r=runHistoricalBacktest(events,'Lunarian',{minTrain:5});assert.ok(r.overallModels.some(x=>x.model==='last_interval'));assert.ok(r.overallModels.some(x=>x.model==='recent_mean_10'));assert.ok(r.temporalValidation.development.predictions>0);assert.ok(r.temporalValidation.validation.predictions>0);assert.ok(r.temporalValidation.test.predictions>0);
 });
