@@ -8,7 +8,8 @@
     "test": "node --test --test-isolation=none tests.mjs",
     "cloud:build": "node cloud/build.mjs",
     "cloud:check": "node cloud/smoke.mjs",
-    "cloud:deploy": "wrangler deploy"
+    "cloud:deploy": "wrangler deploy",
+    "check": "node scripts/static-check.mjs"
   },
   "engines": {
     "node": ">=22.8"
