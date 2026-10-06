@@ -129,3 +129,10 @@ test('extension retry uses cryptographic jitter instead of fixed retry storm',as
  const background=await readFile(new URL('./edge-extension/background.js',import.meta.url),'utf8');
  assert.match(background,/crypto\.getRandomValues/);assert.match(background,/jitterFactor/);assert.doesNotMatch(background,/Math\.random\s*\(/);
 });
+
+
+test('long unrelated chat is rejected before fuzzy work while short typo stays detectable',async()=>{
+ const g=await classic('./edge-extension/collector-core.js'),core=g.BossCollectorCore,c=core.compileDictionary(dictionary);
+ assert.equal(core.match('boa noite grupo hunt loot trade qualquer coisa',c).length,0);
+ const typo=core.match('Ferunbras',c);assert.equal(typo[0]?.name,'Ferumbras');assert.equal(typo[0]?.matchType,'FUZZY');
+});
