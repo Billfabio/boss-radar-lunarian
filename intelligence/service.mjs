@@ -112,15 +112,31 @@ export function createIntelligence({state,persist,broadcast}){
    const row={id,boss:event.boss,world:event.world,eventId,oldAt,newAt:value,actor:String(actor).slice(0,80),reason:String(reason||'').slice(0,300),at:Date.now()};intel.corrections.unshift(row);appendLedger(intel.ledger,'event_corrected',row);audit(intel.audit,'event_corrected',row);await save();broadcast?.('update',{});return row;
  }
 
+ function trustCenter(world,predictions,performance){
+   const sources=sourcePublic(intel.sources),quality=qualitySummary(intel.events,world),calibration=calibrationReport(intel.forecasts,world);
+   const bosses=[...new Set(intel.events.filter(e=>e.world===world).map(e=>e.boss))],drifts=bosses.map(boss=>({boss,...detectDrift(intel.events,boss,world)})).filter(x=>x.detected);
+   const governance=bosses.map(boss=>({boss,...championChallengerReport(intel.forecasts,boss,world)})).filter(x=>x.champion.samples||x.challengers.length);
+   const events=intel.events.filter(e=>e.world===world),conflicts=events.filter(e=>e.qualityStatus==='CONFLITANTE'),suspect=events.filter(e=>['SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(e.qualityStatus)),anomalies=events.filter(e=>e.anomaly);
+   const alerts=[];
+   for(const src of sources){if(src.circuitState==='OPEN')alerts.push({kind:'source_circuit',severity:'high',message:`${src.name} foi temporariamente suspensa pelo circuit breaker.`,sourceId:src.id});else if(src.evaluatedRecords>=20&&src.reliability<60)alerts.push({kind:'source_reliability',severity:'medium',message:`${src.name} apresentou queda de confiabilidade para ${src.reliability}%.`,sourceId:src.id});}
+   if(performance.deterioration?.detected)alerts.push({kind:'precision_drop',severity:'high',message:performance.deterioration.message});
+   for(const d of drifts.slice(0,20))alerts.push({kind:'drift',severity:'medium',message:`Mudança de comportamento detectada em ${d.boss}: ${d.changePercent}% no intervalo recente.`,boss:d.boss});
+   if(conflicts.length)alerts.push({kind:'source_conflict',severity:'medium',message:`${conflicts.length} evento(s) com conflito entre fontes aguardando resolução.`});
+   for(const g of governance.filter(x=>x.promotionRecommended).slice(0,20))alerts.push({kind:'challenger',severity:'info',message:`${g.boss}: challenger ${g.promotionRecommended} superou o Champion com evidência estatística suficiente.`,boss:g.boss});
+   const insufficient=predictions.filter(p=>p.status==='insufficient').map(p=>({boss:p.boss,reason:p.reason||'Dados insuficientes'}));
+   return {quality,calibration,sources,conflicts:conflicts.length,quarantined:suspect.length,anomalies:anomalies.length,drifts,governance,insufficientBosses:insufficient,ledger:verifyLedger(intel.ledger),alerts,engineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION};
+ }
  function snapshot(world){
    refreshEffectiveWeights(intel.sources);
-   const predictions=buildAdaptivePredictions(intel.events,world,intel.models),performance=forecastMetrics(intel.forecasts,world);
-   const ready=predictions.filter(p=>p.status==='ready');
-   const metrics={bossesModeled:ready.length,averageConfidence:ready.length?Math.round(ready.reduce((n,p)=>n+p.confidence,0)/ready.length*10)/10:null,windowAccuracy:performance.days30.windowAccuracy,maeMinutes:performance.days30.maeMinutes,backtestSamples:performance.days30.predictions,totalResolved:performance.totalResolved};
-   const lastMetric=intel.metricsHistory.at(-1);const day=new Date().toISOString().slice(0,10);
+   const rawPredictions=buildAdaptivePredictions(intel.events,world,intel.models),predictions=rawPredictions.map(calibratedPrediction),performance=forecastMetrics(intel.forecasts,world);
+   performance.calibration=calibrationReport(intel.forecasts,world);
+   const ready=predictions.filter(p=>p.status==='ready'),trust=trustCenter(world,predictions,performance),sources=trust.sources;
+   const metrics={bossesModeled:ready.length,bossesInsufficient:predictions.filter(p=>p.status==='insufficient').length,averageConfidence:ready.length?Math.round(ready.reduce((n,p)=>n+p.confidence,0)/ready.length*10)/10:null,averagePredictionScore:ready.length?Math.round(ready.reduce((n,p)=>n+(p.predictionScore||0),0)/ready.length*10)/10:null,dataQualityScore:trust.quality.averageScore,calibrationError:trust.calibration.ece,windowAccuracy:performance.days30.windowAccuracy,maeMinutes:performance.days30.maeMinutes,backtestSamples:performance.days30.predictions,totalResolved:performance.totalResolved};
+   const lastMetric=intel.metricsHistory.at(-1),day=new Date().toISOString().slice(0,10);
    if(!lastMetric||lastMetric.day!==day)intel.metricsHistory.push({day,...metrics,days7:performance.days7,days30:performance.days30,days90:performance.days90});
-   const events=intel.events.filter(e=>e.world===world).sort((a,b)=>b.estimatedAt-a.estimatedAt).slice(0,2000).map(e=>({id:e.id,boss:e.boss,world:e.world,eventType:e.eventType,startAt:e.startAt,endAt:e.endAt,estimatedAt:e.estimatedAt,confidence:Math.round((e.confidence||0)*100),status:e.status,sourceCount:e.sourceCount,confirmations:e.confirmations,anomaly:e.anomaly||null,corrected:!!e.corrected,evidence:(e.evidence||[]).map(x=>({sourceId:x.sourceId,precision:x.precision,estimatedAt:x.estimatedAt,startAt:x.startAt,endAt:x.endAt,confidence:Math.round(x.confidence*100),manual:x.manual,anomaly:x.anomaly||null,detail:x.detail||null}))}));
-   return {predictions,metrics,performance,events,forecasts:recentForecasts(intel.forecasts,world),models:modelPublic(intel.models,world),sources:sourcePublic(intel.sources),audit:publicAudit(intel.audit,300),corrections:intel.corrections.filter(x=>x.world===world).slice(0,500),metricsHistory:intel.metricsHistory.slice(-90)};
+   const events=intel.events.filter(e=>e.world===world).sort((a,b)=>b.estimatedAt-a.estimatedAt).slice(0,2000).map(e=>({id:e.id,boss:e.boss,world:e.world,eventType:e.eventType,startAt:e.startAt,endAt:e.endAt,estimatedAt:e.estimatedAt,confidence:Math.round((e.confidence||0)*100),dataQualityScore:e.dataQualityScore??null,qualityStatus:e.qualityStatus||null,status:e.status,sourceCount:e.sourceCount,confirmations:e.confirmations,confirmingSources:e.confirmingSources||[],consensus:e.consensus||null,anomaly:e.anomaly||null,corrected:!!e.corrected,evidence:(e.evidence||[]).map(x=>({evidenceId:x.evidenceId,sourceId:x.sourceId,sourceRef:x.sourceRef||'',collectionMethod:x.collectionMethod||'unknown',sourceObservedAt:x.sourceObservedAt||null,collectedAt:x.collectedAt||null,processedAt:x.processedAt||null,confirmedBy:x.confirmedBy||null,precision:x.precision,estimatedAt:x.estimatedAt,startAt:x.startAt,endAt:x.endAt,confidence:Math.round(x.confidence*100),quality:x.quality||null,manual:x.manual,anomaly:x.anomaly||null,detail:x.detail||null}))}));
+   const observability=aiObservability({events:intel.events,forecasts:intel.forecasts,sources,world,predictions});
+   return {predictions,metrics,performance,trustCenter:trust,observability,events,forecasts:recentForecasts(intel.forecasts,world),models:modelPublic(intel.models,world),sources,audit:publicAudit(intel.audit,300),corrections:intel.corrections.filter(x=>x.world===world).slice(0,500),metricsHistory:intel.metricsHistory.slice(-90),ledgerTail:intel.ledger.slice(-200)};
  }
 
  async function bootstrapChecks(checks=[]){let added=0;for(const check of checks){const obs=checkObservation(check);if(!obs)continue;const r=addObservation(obs,{allowAnomaly:false});if(r&&!r.duplicate)added++;}if(added){audit(intel.audit,'legacy_bootstrap',{records:added});await save();}return added;}
@@ -131,14 +147,14 @@ export function createIntelligence({state,persist,broadcast}){
    return result;
  }
  function healthState(world){
-   const forecasts=intel.forecasts.filter(x=>x.world===world),events=intel.events.filter(x=>x.world===world),lastForecast=forecasts.reduce((m,x)=>Math.max(m,x.lastUpdatedAt||x.createdAt||0),0),lastEvent=events.reduce((m,x)=>Math.max(m,x.updatedAt||x.estimatedAt||0),0);
-   return {sources:sourcePublic(intel.sources),lastPredictionAt:lastForecast,lastEventAt:lastEvent,eventCount:events.length,forecastCount:forecasts.length,models:Object.keys(intel.models).filter(k=>k.startsWith(world+'|')).length};
+   const forecasts=intel.forecasts.filter(x=>x.world===world),events=intel.events.filter(x=>x.world===world),lastForecast=forecasts.reduce((m,x)=>Math.max(m,x.lastUpdatedAt||x.createdAt||0),0),lastEvent=events.reduce((m,x)=>Math.max(m,x.updatedAt||x.estimatedAt||0),0),sources=sourcePublic(intel.sources);
+   return {sources,lastPredictionAt:lastForecast,lastEventAt:lastEvent,eventCount:events.length,forecastCount:forecasts.length,models:Object.keys(intel.models).filter(k=>k.startsWith(world+'|')).length,quarantinedEvents:events.filter(e=>['CONFLITANTE','SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(e.qualityStatus)).length,openCircuits:sources.filter(x=>x.circuitState==='OPEN').length,ledger:verifyLedger(intel.ledger)};
  }
  function simulate(boss,world){
-   const prediction=predictAdaptive(intel.events,boss,world,intel.models),events=intel.events.filter(e=>e.boss===boss&&e.world===world&&/^confirmed_/.test(e.status)&&!e.anomaly&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt);
+   const prediction=calibratedPrediction(predictAdaptive(intel.events,boss,world,intel.models)),events=intel.events.filter(e=>e.boss===boss&&e.world===world&&/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt);
    const recent=events.slice(-100),intervals=[];for(let i=1;i<recent.length;i++)intervals.push({from:recent[i-1].estimatedAt,to:recent[i].estimatedAt,ms:recent[i].estimatedAt-recent[i-1].estimatedAt});
-   const model=modelPublic(intel.models,world).find(x=>x.boss===boss)||null;
-   return {boss,world,prediction,events:recent.map(e=>({id:e.id,estimatedAt:e.estimatedAt,status:e.status,confidence:Math.round((e.confidence||0)*100),sourceCount:e.sourceCount,confirmations:e.confirmations})),intervals,model};
+   const model=modelPublic(intel.models,world).find(x=>x.boss===boss)||null,governance=championChallengerReport(intel.forecasts,boss,world);
+   return {boss,world,prediction,governance,calibration:calibrationReport(intel.forecasts,world,boss),drift:detectDrift(intel.events,boss,world),events:recent.map(e=>({id:e.id,estimatedAt:e.estimatedAt,status:e.status,qualityStatus:e.qualityStatus,dataQualityScore:e.dataQualityScore,confidence:Math.round((e.confidence||0)*100),sourceCount:e.sourceCount,confirmations:e.confirmations,confirmingSources:e.confirmingSources||[]})),intervals,model};
  }
- return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation};
+ return {sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation};
 }
