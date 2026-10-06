@@ -146,7 +146,7 @@ function validSettings(input) {
   }
   return result;
 }
-const whatsapp=createWhatsAppSync({state,persist,broadcast,names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
+const whatsapp=createWhatsAppSync({state,persist,broadcast,names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
     if(req.headers.host!==`127.0.0.1:${PORT}`) return json(res,403,{error:'Abra pelo endereço local indicado'});
