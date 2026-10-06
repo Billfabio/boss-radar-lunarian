@@ -523,3 +523,20 @@ test('legacy duplicate can recover provenance idempotently without changing the 
  assert.equal(second.duplicate,true);assert.equal(second.enriched,true);assert.equal(event.estimatedAt,beforeAt);assert.equal(event.evidence.length,1);assert.equal(event.evidence[0].quality.traceable,true);assert.equal(event.evidence[0].sourceRef,'https://otbosstracker.com/data/bosses.json');
  assert.ok(state.intelligence.ledger.some(x=>x.type==='evidence_provenance_enriched'));
 });
+
+
+test('calibration can isolate results from the active model version',()=>{
+ const rows=[];for(let i=0;i<30;i++)rows.push({world:'Lunarian',boss:'V',modelVersion:'old',resolvedAt:i+1,confidenceRaw:90,confidence:90,windowHit:false});
+ for(let i=0;i<30;i++)rows.push({world:'Lunarian',boss:'V',modelVersion:'new',resolvedAt:100+i,confidenceRaw:90,confidence:90,windowHit:i<27});
+ const all=calibrationReport(rows,'Lunarian','V'),current=calibrationReport(rows,'Lunarian','V',{modelVersion:'new'});
+ assert.equal(all.samples,60);assert.equal(current.samples,30);assert.equal(current.bins.find(x=>x.min===90).actual,90);
+ const c=calibrateConfidence(90,rows,'Lunarian','V',{modelVersion:'new'});assert.equal(c.samples,30);assert.ok(c.calibrated>=88);
+});
+
+test('champion challenger governance does not mix forecasts from old engine versions',()=>{
+ const base=Date.now(),rows=[];
+ for(let i=0;i<80;i++)rows.push({id:'old-g'+i,boss:'Version Gov',world:'Lunarian',modelVersion:'old',resolvedAt:base+i,errorMinutes:30,windowHit:true,challengers:[{name:'candidate',actualErrorMinutes:4,hit:true}]});
+ for(let i=0;i<20;i++)rows.push({id:'new-g'+i,boss:'Version Gov',world:'Lunarian',modelVersion:'new',resolvedAt:base+1000+i,errorMinutes:10,windowHit:true,challengers:[{name:'candidate',actualErrorMinutes:9,hit:true}]});
+ const g=championChallengerReport(rows,'Version Gov','Lunarian','adaptive_ensemble',{modelVersion:'new'});
+ assert.equal(g.champion.samples,20);assert.equal(g.promotionRecommended,null);assert.equal(g.minSamples,50);
+});
