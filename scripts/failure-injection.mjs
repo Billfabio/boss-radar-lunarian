@@ -13,7 +13,11 @@ const retryAt=sources.otbosstracker.suspendedUntil+1;assert.equal(canAttemptSour
 noteSource(sources,'otbosstracker',{ok:true,records:1,at:retryAt+1});assert.equal(sources.otbosstracker.circuitState,'CLOSED');
 
 for(let i=0;i<8;i++)noteEvidenceOutcome(sources,'rubinot-official',{correct:false,errorMs:4*3600000,precision:'minute',consistency:.1,at:retryAt+100+i});
-assert.equal(sources['rubinot-official'].circuitState,'OPEN');const qualityRecoveryAt=sources['rubinot-official'].suspendedUntil+1;assert.equal(canAttemptSource(sources,'rubinot-official',qualityRecoveryAt),true);noteSource(sources,'rubinot-official',{ok:true,records:1,at:qualityRecoveryAt+1});assert.equal(sources['rubinot-official'].circuitState,'CLOSED');
+assert.equal(sources['rubinot-official'].circuitState,'OPEN');assert.equal(sources['rubinot-official'].circuitReason,'quality');
+const qualityRecoveryAt=sources['rubinot-official'].suspendedUntil+1;assert.equal(canAttemptSource(sources,'rubinot-official',qualityRecoveryAt),true);assert.equal(sources['rubinot-official'].circuitState,'HALF_OPEN');
+noteSource(sources,'rubinot-official',{ok:true,records:1,at:qualityRecoveryAt+1});assert.equal(sources['rubinot-official'].circuitState,'HALF_OPEN');
+for(let i=0;i<3;i++)noteEvidenceOutcome(sources,'rubinot-official',{correct:true,errorMs:2*60000,precision:'minute',consistency:.95,at:qualityRecoveryAt+2+i});
+assert.equal(sources['rubinot-official'].circuitState,'CLOSED');assert.equal(sources['rubinot-official'].circuitReason,null);
 
 const limiter=new RateLimiter({windowMs:1000,max:100});let rejected=0;for(let i=0;i<1000;i++)if(!limiter.check('load-client',now+i%10).allowed)rejected++;assert.equal(rejected,900);assert.equal(limiter.check('load-client',now+1001).allowed,true);
 
