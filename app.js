@@ -28,9 +28,14 @@ function bosses(includeAll=false){
   for(const name of Object.keys(model.settings.progress)) if(!map.has(name)) map.set(name,{name,history:[],manual:true});
   return [...map.values()].map(b=>({...b,image_url:b.image_url||entryFor(b.name,model.bosstiary||[])?.image_url,prediction:data.pending.find(p=>p.boss_name===b.name),progress:progress(b.name)}));
 }
+let loadInFlight=null,loadAgain=false;
 async function load(){
-  try {const res=await fetch('/api/state');if(!res.ok)throw new Error('Monitor indisponível');model=await res.json();render();}
-  catch(e){$('source-warning').hidden=false;$('source-warning').textContent='Monitor indisponível. Inicie o servidor do Boss Radar. '+e.message;}
+  if(loadInFlight){loadAgain=true;return loadInFlight;}
+  loadInFlight=(async()=>{
+    try {const res=await fetch('/api/state',{cache:'no-store'});if(!res.ok)throw new Error('Monitor indisponível');model=await res.json();render();}
+    catch(e){$('source-warning').hidden=false;$('source-warning').textContent='Monitor indisponível. Inicie o servidor do Boss Radar. '+e.message;}
+  })();
+  try{return await loadInFlight;}finally{loadInFlight=null;if(loadAgain){loadAgain=false;void load();}}
 }
 function render(){
   const all=bosses(); const now=Date.now();
