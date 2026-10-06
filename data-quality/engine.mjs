@@ -1,3 +1,4 @@
+export const DATA_QUALITY_ENGINE_VERSION='2.0.0';
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const PRECISION={minute:1,hour:.82,range:.64,day:.42};
 const STATUS={confirmed:'CONFIRMADO',probable:'PROVÁVEL',waiting:'AGUARDANDO_CONFIRMAÇÃO',conflict:'CONFLITANTE',suspect:'SUSPEITO',discarded:'DESCARTADO'};
@@ -62,7 +63,7 @@ export function assessObservation(obs,{sources={},events=[],peerEvidence=[],now=
  if(!traceable&&status!==STATUS.discarded)status=STATUS.waiting;
  if(obs.anomaly&&status===STATUS.confirmed)status=STATUS.waiting;
  const eligibleForLearning=traceable&&score>=70&&!obs.anomaly&&status!==STATUS.discarded&&status!==STATUS.waiting;
- return {score,status,eligibleForLearning,traceable,components:Object.fromEntries(Object.entries(components).map(([k,v])=>[k,Math.round(v*100)])),evaluatedAt:now};
+ return {version:DATA_QUALITY_ENGINE_VERSION,score,status,eligibleForLearning,traceable,components:Object.fromEntries(Object.entries(components).map(([k,v])=>[k,Math.round(v*100)])),evaluatedAt:now};
 }
 
 export function reassessEventQuality(event,sources,now=Date.now()){
