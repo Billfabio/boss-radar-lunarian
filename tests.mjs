@@ -540,3 +540,18 @@ test('champion challenger governance does not mix forecasts from old engine vers
  const g=championChallengerReport(rows,'Version Gov','Lunarian','adaptive_ensemble',{modelVersion:'new'});
  assert.equal(g.champion.samples,20);assert.equal(g.promotionRecommended,null);assert.equal(g.minSamples,50);
 });
+
+
+test('forecast metrics can isolate the active model version from historical versions',()=>{
+ const now=Date.now(),rows=[];
+ for(let i=0;i<20;i++)rows.push({world:'Lunarian',boss:'VM',modelVersion:'old',resolvedAt:now-i*1000,windowHit:false,errorMinutes:60});
+ for(let i=0;i<10;i++)rows.push({world:'Lunarian',boss:'VM',modelVersion:'new',resolvedAt:now-i*1000,windowHit:true,errorMinutes:10});
+ const all=forecastMetrics(rows,'Lunarian',now),current=forecastMetrics(rows,'Lunarian',now,{modelVersion:'new'});
+ assert.equal(all.totalResolved,30);assert.equal(current.totalResolved,10);assert.equal(current.all.windowAccuracy,100);assert.equal(current.all.maeMinutes,10);
+});
+
+test('intelligence initialization records engine/model version transition in the immutable ledger',()=>{
+ const state={intelligence:{version:3,engineVersion:'4.1.0',modelVersion:'adaptive-ensemble-v4.1',sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{},ledger:[]}};
+ createIntelligence({state,persist:async()=>{},broadcast:()=>{}});
+ const change=state.intelligence.ledger.find(x=>x.type==='engine_version_changed');assert.ok(change);assert.equal(change.payload.fromEngine,'4.1.0');assert.equal(change.payload.toEngine,'4.2.0');assert.equal(verifyLedger(state.intelligence.ledger).valid,true);
+});
