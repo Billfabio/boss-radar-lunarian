@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Boss Radar · Grupo de checagens",
-  "version": "1.3.0",
-  "description": "Importa checagens do grupo escolhido para o Boss Radar em uma origem local ou HTTPS autorizada.",
+  "version": "1.4.0",
+  "description": "Sensor leve do grupo Lunarian para criar evidências candidatas no Boss Radar.",
   "permissions": [
     "storage",
     "alarms"
@@ -29,6 +29,7 @@
       ],
       "js": [
         "adapter.js",
+        "collector-core.js",
         "content.js"
       ],
       "run_at": "document_idle"
