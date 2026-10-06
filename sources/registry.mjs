@@ -12,20 +12,36 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function ensureSources(value={}){
   for(const [id,d] of Object.entries(SOURCE_DEFINITIONS)){
     const old=value[id]||{};
-    value[id]={id,name:d.name,kind:d.kind,baseWeight:d.baseWeight,active:d.active,eventEvidence:d.eventEvidence,note:d.note||'',alpha:Number(old.alpha)||8*d.baseWeight,beta:Number(old.beta)||8*(1-d.baseWeight),requests:Number(old.requests)||0,successes:Number(old.successes)||0,records:Number(old.records)||0,errors:Number(old.errors)||0,lastAttempt:Number(old.lastAttempt)||0,lastSuccess:Number(old.lastSuccess)||0,lastRecordAt:Number(old.lastRecordAt)||0,lastLatencyMs:Number(old.lastLatencyMs)||0,totalLatencyMs:Number(old.totalLatencyMs)||0,lastError:String(old.lastError||''),...old};
+    value[id]={id,name:d.name,kind:d.kind,baseWeight:d.baseWeight,active:d.active,eventEvidence:d.eventEvidence,note:d.note||'',alpha:Number(old.alpha)||8*d.baseWeight,beta:Number(old.beta)||8*(1-d.baseWeight),requests:Number(old.requests)||0,successes:Number(old.successes)||0,records:Number(old.records)||0,errors:Number(old.errors)||0,evaluatedRecords:Number(old.evaluatedRecords)||0,correctRecords:Number(old.correctRecords)||0,incorrectRecords:Number(old.incorrectRecords)||0,duplicates:Number(old.duplicates)||0,totalErrorMs:Number(old.totalErrorMs)||0,totalDelayMs:Number(old.totalDelayMs)||0,delaySamples:Number(old.delaySamples)||0,consistencySum:Number(old.consistencySum)||0,consistencySamples:Number(old.consistencySamples)||0,consecutiveFailures:Number(old.consecutiveFailures)||0,circuitState:old.circuitState||'CLOSED',suspendedUntil:Number(old.suspendedUntil)||0,lastAttempt:Number(old.lastAttempt)||0,lastSuccess:Number(old.lastSuccess)||0,lastRecordAt:Number(old.lastRecordAt)||0,lastLatencyMs:Number(old.lastLatencyMs)||0,totalLatencyMs:Number(old.totalLatencyMs)||0,lastError:String(old.lastError||''),...old};
   }
   return value;
 }
 export function sourceWeight(source){
   const posterior=source.alpha/(source.alpha+source.beta);
-  return clamp(source.baseWeight*.55+posterior*.45,.2,.99);
+  const circuit=source.circuitState==='OPEN'&&source.suspendedUntil>Date.now()?.15:source.circuitState==='HALF_OPEN'?.65:1;
+  const consistency=source.consistencySamples?clamp(source.consistencySum/source.consistencySamples,.2,1):1;
+  return clamp((source.baseWeight*.5+posterior*.4+.1*consistency)*circuit,.05,.99);
 }
 export function noteSource(sources,id,{ok,records=0,latencyMs=0,error='',at=Date.now()}={}){
   ensureSources(sources);const s=sources[id];if(!s)return;
   s.requests++;s.lastAttempt=at;s.lastLatencyMs=Math.max(0,Math.round(latencyMs));s.totalLatencyMs=(Number(s.totalLatencyMs)||0)+s.lastLatencyMs;
-  if(ok){s.successes++;s.lastSuccess=at;s.lastError='';if(records>0){s.records+=records;s.lastRecordAt=at;}}
-  else{s.errors++;s.lastError=String(error||'Falha na fonte').slice(0,300);}
+  if(ok){s.successes++;s.lastSuccess=at;s.lastError='';s.consecutiveFailures=0;s.circuitState='CLOSED';s.suspendedUntil=0;if(records>0){s.records+=records;s.lastRecordAt=at;}}
+  else{s.errors++;s.consecutiveFailures=(s.consecutiveFailures||0)+1;s.lastError=String(error||'Falha na fonte').slice(0,300);if(s.consecutiveFailures>=3){s.circuitState='OPEN';s.suspendedUntil=at+Math.min(30*60000,5*60000*Math.pow(2,Math.min(3,s.consecutiveFailures-3)));}}
 }
 export function sourcePublic(sources){
-  ensureSources(sources);return Object.values(sources).map(s=>({...s,reliability:Math.round(sourceWeight(s)*100),successRate:s.requests?Math.round(100*s.successes/s.requests):null,averageLatencyMs:s.requests?Math.round((s.totalLatencyMs||0)/s.requests):null})).sort((a,b)=>Number(b.active)-Number(a.active)||b.reliability-a.reliability);
+  ensureSources(sources);return Object.values(sources).map(s=>({...s,reliability:Math.round(sourceWeight(s)*100),successRate:s.requests?Math.round(100*s.successes/s.requests):null,accuracyRate:s.evaluatedRecords?Math.round(1000*s.correctRecords/s.evaluatedRecords)/10:null,averageErrorMinutes:s.evaluatedRecords?Math.round((s.totalErrorMs||0)/s.evaluatedRecords/6000)/10:null,averageDelayMinutes:s.delaySamples?Math.round((s.totalDelayMs||0)/s.delaySamples/6000)/10:null,consistency:s.consistencySamples?Math.round(1000*s.consistencySum/s.consistencySamples)/10:null,averageLatencyMs:s.requests?Math.round((s.totalLatencyMs||0)/s.requests):null})).sort((a,b)=>Number(b.active)-Number(a.active)||b.reliability-a.reliability);
+}
+
+export function noteDuplicate(sources,id){ensureSources(sources);const s=sources[id];if(s)s.duplicates=(s.duplicates||0)+1;}
+export function noteEvidenceOutcome(sources,id,{correct,errorMs=0,delayMs=null,consistency=null}={}){
+ ensureSources(sources);const s=sources[id];if(!s)return;s.evaluatedRecords=(s.evaluatedRecords||0)+1;if(correct)s.correctRecords=(s.correctRecords||0)+1;else s.incorrectRecords=(s.incorrectRecords||0)+1;
+ if(Number.isFinite(errorMs))s.totalErrorMs=(s.totalErrorMs||0)+Math.max(0,errorMs);
+ if(Number.isFinite(delayMs)){s.totalDelayMs=(s.totalDelayMs||0)+Math.max(0,delayMs);s.delaySamples=(s.delaySamples||0)+1;}
+ if(Number.isFinite(consistency)){s.consistencySum=(s.consistencySum||0)+clamp(consistency,0,1);s.consistencySamples=(s.consistencySamples||0)+1;}
+}
+export function canAttemptSource(sources,id,now=Date.now()){
+ ensureSources(sources);const s=sources[id];if(!s||!s.active)return false;
+ if(s.circuitState==='OPEN'&&s.suspendedUntil>now)return false;
+ if(s.circuitState==='OPEN'&&s.suspendedUntil<=now)s.circuitState='HALF_OPEN';
+ return true;
 }
