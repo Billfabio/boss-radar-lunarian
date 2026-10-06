@@ -24,11 +24,11 @@ export function recalculateForecastOutcome(forecast,event){
  const center=Number.isFinite(forecast.likelyAt)?forecast.likelyAt:(Number.isFinite(forecast.predictedCenterAt)?forecast.predictedCenterAt:null);
  forecast.errorMinutes=precise&&Number.isFinite(center)?Math.round(Math.abs(actual-center)/6000)/10:null;
  forecast.signedErrorMinutes=precise&&Number.isFinite(center)?Math.round((actual-center)/6000)/10:null;
- for(const method of forecast.methods||[]){
+ const tolerance=Math.max(60,(forecast.windowEnd-forecast.windowStart)/120000);
+ for(const method of [...(forecast.methods||[]),...(forecast.challengers||[])]){
    if(!Number.isFinite(method.predictedAt))continue;
    if(!precise){method.actualErrorMinutes=null;method.hit=null;continue;}
-   const err=Math.abs(actual-method.predictedAt)/60000,tolerance=Math.max(60,(forecast.windowEnd-forecast.windowStart)/120000);
-   method.actualErrorMinutes=Math.round(err*10)/10;method.hit=err<=tolerance;
+   const err=Math.abs(actual-method.predictedAt)/60000;method.actualErrorMinutes=Math.round(err*10)/10;method.hit=err<=tolerance;
  }
  return forecast;
 }
