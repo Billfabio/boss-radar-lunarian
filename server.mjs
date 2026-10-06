@@ -82,16 +82,25 @@ async function refresh(force=false) {
   if (refreshPromise) { await refreshPromise; if (cache.get(world)) return cache.get(world); }
   refreshPromise=(async()=>{
     const refreshStarted=performance.now(),capturedWorld=world;
+    let catalogFallback=null;
     if(!catalog.length) {
-      const started=Date.now();const response=await fetch('https://cdn.rubinottools.com/json/bosses.json',{signal:AbortSignal.timeout(20000)});
-      if(!response.ok){intelligence.sourceAttempt('rubinot-catalog',{ok:false,error:`HTTP ${response.status}`,latencyMs:Date.now()-started});throw new Error(`Catálogo indisponível (HTTP ${response.status})`);}
-      const raw=await response.json();
-      if(!Array.isArray(raw)) throw new Error('Formato do catálogo desconhecido');
-      catalog=raw.filter(b=>b && typeof b.name==='string').map(b=>({...b,history:[]}));
-      intelligence.sourceAttempt('rubinot-catalog',{ok:true,records:catalog.length,latencyMs:Date.now()-started});
-      await writeFile(join(DATA,'catalog.json'),JSON.stringify(catalog));
+      const started=Date.now();
+      if(intelligence.sourceReady('rubinot-catalog'))try{
+        const response=await fetch('https://cdn.rubinottools.com/json/bosses.json',{signal:AbortSignal.timeout(20000)});
+        if(!response.ok)throw new Error(`HTTP ${response.status}`);
+        const raw=await response.json();if(!Array.isArray(raw))throw new Error('Formato do catálogo desconhecido');
+        catalog=raw.filter(b=>b&&typeof b.name==='string').map(b=>({...b,history:[]}));
+        if(!catalog.length)throw new Error('Catálogo vazio');
+        intelligence.sourceAttempt('rubinot-catalog',{ok:true,records:catalog.length,latencyMs:Date.now()-started});
+        await writeFile(join(DATA,'catalog.json'),JSON.stringify(catalog));
+      }catch(e){catalogFallback=`Catálogo externo indisponível: ${e.message}`;intelligence.sourceAttempt('rubinot-catalog',{ok:false,error:e.message,latencyMs:Date.now()-started});}
+      else catalogFallback='Catálogo externo temporariamente suspenso pelo circuit breaker.';
+      if(!catalog.length){
+        const seen=new Set();catalog=bosstiary.filter(b=>b&&typeof b.name==='string'&&!seen.has(b.name)&&(seen.add(b.name),true)).map(b=>({name:b.name,history:[],localFallback:true}));
+        if(!catalog.length)throw new Error('Nenhum catálogo de bosses disponível');
+      }
     }
-    if(!cache.has(capturedWorld))cache.set(capturedWorld,{world:capturedWorld,pending:[],bosses:catalog,fetchedAt:Date.now(),catalogOnly:true});
+    if(!cache.has(capturedWorld))cache.set(capturedWorld,{world:capturedWorld,pending:[],bosses:catalog,fetchedAt:Date.now(),catalogOnly:true,catalogFallback});
     let result,publicError=null;const previous=cache.get(capturedWorld),publicStarted=Date.now();
     if(!intelligence.sourceReady('otbosstracker')){
       publicError='Histórico público temporariamente suspenso pelo circuit breaker.';
