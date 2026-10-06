@@ -574,7 +574,7 @@ test('quarantined waiting evidence cannot shift a confirmed consensus timestamp'
  const base=Date.now()-6*3600000,events=[];
  const good=makeObservation({evidenceId:'good-q',boss:'Q Boss',world:'Lunarian',sourceId:'manual-panel',sourceRef:'boss-radar://panel',collectionMethod:'manual_panel',eventType:'kill',precision:'minute',estimatedAt:base,manual:true,confidence:.98});
  good.quality={score:95,status:'CONFIRMADO',eligibleForLearning:true,traceable:true};
- const waiting=makeObservation({evidenceId:'wait-q',boss:'Q Boss',world:'Lunarian',sourceId:'whatsapp-group',sourceRef:'whatsapp://authorized-group',collectionMethod:'browser_extension',eventType:'kill',precision:'minute',estimatedAt:base+3*3600000,confidence:.9});
+ const waiting=makeObservation({evidenceId:'wait-q',boss:'Q Boss',world:'Lunarian',sourceId:'whatsapp-group',sourceRef:'whatsapp://authorized-group',collectionMethod:'browser_extension',eventType:'kill',precision:'minute',estimatedAt:base+30*60000,confidence:.9});
  waiting.quality={score:65,status:'AGUARDANDO_CONFIRMAÇÃO',eligibleForLearning:false,traceable:true};
  mergeObservation(events,good,sources);mergeObservation(events,waiting,sources);
  assert.equal(events.length,1);assert.equal(events[0].estimatedAt,base);assert.equal(events[0].qualityStatus,'PROVÁVEL');
