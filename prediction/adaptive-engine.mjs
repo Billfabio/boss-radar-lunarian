@@ -47,7 +47,7 @@ export function predictAdaptive(events,boss,world,models={},now=Date.now()){
  const modelState=models[world+'|'+String(boss).toLowerCase()]?.methods||{};
  const weighted=methods.map(m=>{let base=(m.name==='recent_interval'?1.08:(m.name==='historical_interval'?1:(m.name==='time_of_day'?0.72:0.58)));if(m.name==='recent_interval')base*=recentMultiplier;if(m.name==='historical_interval')base*=historyMultiplier;const learned=adaptiveMethodWeight(models,boss,world,m.name,m.name.includes('interval')?24*60:8*60),learnedState=modelState[m.name]||null;const dataFactor=clamp(Math.log2((m.samples||1)+1)/5,.25,1);const quality=m.concentration==null?1:clamp(.35+.9*m.concentration,.35,1.2);return {...m,weight:base*learned*dataFactor*quality,learnedSamples:learnedState?.count||0,learnedErrorMinutes:learnedState?.emaErrorMinutes??null,learnedHitRate:learnedState?.emaHitRate==null?null:Math.round(learnedState.emaHitRate*1000)/10};});
  const totalWeight=weighted.reduce((n,m)=>n+m.weight,0)||1;for(const m of weighted)m.normalizedWeight=m.weight/totalWeight;
- const predictedAt=weighted.reduce((n,m)=>n+m.predictedAt*m.weight,0)/totalWeight;
+ const predictedAt=weightedMedian(weighted.map(m=>m.predictedAt),weighted.map(m=>m.weight));
  const ints=intervals(rows),globalSpread=Math.max(precise(rows.at(-1))?30*60000:12*HOUR,robustSpread(ints,median(ints)));
  const disagreement=Math.sqrt(weighted.reduce((n,m)=>n+m.weight*Math.pow(m.predictedAt-predictedAt,2),0)/totalWeight);
  const uncertainty=Math.max(globalSpread,disagreement,precise(rows.at(-1))?30*60000:12*HOUR),windowStart=Math.round(predictedAt-uncertainty),windowEnd=Math.round(predictedAt+uncertainty);
