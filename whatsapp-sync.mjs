@@ -1,35 +1,66 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {decodeGroupImage} from './group-images.mjs';
 import {parseGroupText,validateGroupRows,checkKey,brasiliaDate} from './group-checks.mjs';
-const digest=s=>createHash('sha256').update(s).digest('hex');
-const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+import {evidenceId,mergeEvidence,enrichCandidate,latencyPercentiles} from './whatsapp-community.mjs';
+const digest=s=>createHash('sha256').update(String(s)).digest('hex');
+const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+const REQUIRED_GROUP='lunarian',LATEST_EXTENSION='1.4.0';
+const contexts=new Set(['POSSIBLE_REPORT','CONFIRMATION','QUESTION','NEGATION','SPECULATION','CORRECTION','UNKNOWN']);
+const collectorStates=new Set(['CONNECTED','WHATSAPP_NOT_FOUND','LUNARIAN_NOT_FOUND','PAUSED','BACKEND_OFFLINE','DEGRADED','ERROR','DISCONNECTED','WHATSAPP_WEB_STRUCTURE_CHANGED']);
+const safeNum=(v,min=0,max=Number.MAX_SAFE_INTEGER)=>Math.max(min,Math.min(max,Number(v)||0));
+const timeParts=at=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(at)).map(x=>[x.type,x.value]));
 export function extractObservations(message,names){
- const text=String(message.text||'').slice(0,6000);
- // Only explicit reports are accepted. Plans, questions and conditional reports need review.
- const mentioned=names.filter(n=>norm(text).includes(norm(n)));
+ const text=String(message.text||'').slice(0,6000),mentioned=names.filter(n=>norm(text).includes(norm(n)));
  if(/[?]|\b(?:vou|vamos|sera|talvez|se aparecer|amanha|ontem|anteontem)\b/.test(norm(text)))return {rows:[],pending:true,mentioned};
- const rows=parseGroupText(text,names,{date:message.date,time:message.time,result:''});
- const recognized=rows.filter(r=>r.boss&&r.result);
+ const rows=parseGroupText(text,names,{date:message.date,time:message.time,result:''}),recognized=rows.filter(r=>r.boss&&r.result);
  return {rows:recognized,pending:rows.some(r=>!r.boss||!r.result)||(!recognized.length&&mentioned.length>0),mentioned};
 }
-export function createWhatsAppSync({state,persist,broadcast,names,worlds,readBody,favorable=()=> 'unknown',saveImage=async()=>{throw new Error('Armazenamento de imagens indisponível');},onRecords=async()=>{}}){
+export function createWhatsAppSync({state,persist,broadcast,dictionary,names=()=>[],worlds,readBody,favorable=()=> 'unknown',saveImage=async()=>{throw new Error('Armazenamento de imagens indisponível');},onRecords=async()=>{},investigate=async()=>{}}){
  state.whatsapp ||= {connection:null,pending:[],seen:[],checkpoint:null,status:'Não conectado'};
- state.whatsapp.identified ||= [];
- state.whatsapp.images ||= [];
- const knownIds=new Set(state.whatsapp.identified.map(r=>r.id));for(const p of state.whatsapp.pending)if(!knownIds.has(p.id)&&p.bosses?.length)state.whatsapp.identified.push({id:p.id,bosses:p.bosses,at:Date.parse(p.date+'T'+(p.time||'12:00')+':00-03:00')||0});
+ const w=state.whatsapp;w.pending ||= [];w.seen ||= [];w.identified ||= [];w.images ||= [];w.communityEvidence ||= [];w.candidates ||= [];w.coverageSegments ||= [];w.gaps ||= [];w.aliases ||= {};w.collector ||= {status:'DISCONNECTED',metrics:{},captureLatencies:[]};
+ const dict=()=>dictionary?dictionary():{version:'legacy',entries:names().map((name,i)=>({boss_id:'legacy-'+i,name,aliases:[]}))};
+ const bossNames=()=>dict().entries.map(x=>x.name);
  const badGroup=s=>/^(dados do perfil|profile details|dados do contato|contact info|group info|dados do grupo)$/i.test(String(s).trim());
- const identified=()=>{const byBoss=new Map();for(const row of state.groupChecks.filter(c=>c.origin==='whatsapp')){if(!byBoss.has(row.boss))byBoss.set(row.boss,{boss:row.boss,found:0,empty:0,pending:0,lastAt:0});const p=byBoss.get(row.boss);p[row.result==='encontrado'?'found':'empty']++;p.lastAt=Math.max(p.lastAt,row.at||0);}
-  for(const r of state.whatsapp.identified)for(const boss of r.bosses){if(!byBoss.has(boss))byBoss.set(boss,{boss,found:0,empty:0,pending:0,lastAt:0});const p=byBoss.get(boss);if(state.whatsapp.pending.some(x=>x.id===r.id))p.pending++;p.lastAt=Math.max(p.lastAt,r.at||0);}return [...byBoss.values()].sort((a,b)=>a.boss.localeCompare(b.boss));};
- let pairing=null,attempts=0;
- const publicState=()=>({connected:!!state.whatsapp.connection,group:state.whatsapp.connection?.group||'',world:state.whatsapp.connection?.world||'',status:badGroup(state.whatsapp.connection?.group)?'Nome do grupo capturado incorretamente. Atualize a extensão e conecte o grupo correto.':state.whatsapp.status,checkpoint:state.whatsapp.checkpoint,pending:state.whatsapp.pending,identified:identified(),images:state.whatsapp.images,diagnostics:state.whatsapp.diagnostics||null,lastSync:state.whatsapp.lastSync||null});
+ const exactGroup=s=>norm(s)===REQUIRED_GROUP;
+ let pairing=null,attempts=0,lastHeartbeatPersist=0;
+ function coverage(now=Date.now()){
+  const start=now-86400000,segments=w.coverageSegments.filter(x=>x.endAt>start&&x.startAt<now),covered=segments.reduce((n,x)=>n+Math.max(0,Math.min(now,x.endAt)-Math.max(start,x.startAt)),0),gaps=w.gaps.filter(x=>x.endAt>start&&x.startAt<now);
+  return {windowHours:24,coveredMs:Math.min(86400000,covered),coveragePct:Math.round(1000*Math.min(1,covered/86400000))/10,gapMinutes:Math.round(gaps.reduce((n,x)=>n+Math.max(0,Math.min(now,x.endAt)-Math.max(start,x.startAt)),0)/60000),gaps:gaps.slice(-20)};
+ }
+ function metrics(){
+  const m=w.collector.metrics||{},latency=latencyPercentiles(w.collector.captureLatencies||[]);
+  return {...m,captureLatency:latency,queueSize:safeNum(w.collector.queueSize,0,10000),duplicateRate:m.relevantMessages?Math.round(1000*(m.duplicates||0)/m.relevantMessages)/10:0,errorRate:m.requests?Math.round(1000*(m.errors||0)/m.requests)/10:0};
+ }
+ const publicEvidence=e=>({id:e.id,bossCandidates:e.bossCandidates,contextClassification:e.contextClassification,messageTimestamp:e.messageTimestamp,capturedTimestamp:e.capturedTimestamp,receivedAt:e.receivedAt,authorHash:e.authorHash,text:e.text,similarity:e.similarity,matchType:e.matchType});
+ const publicCandidate=c=>({...c,evidence:(c.evidenceIds||[]).map(id=>w.communityEvidence.find(e=>e.id===id)).filter(Boolean).map(publicEvidence)});
+ const publicState=()=>({connected:!!w.connection,group:w.connection?.group||'',world:w.connection?.world||'',collectorId:w.connection?.collectorId||'',status:w.collector.status||'DISCONNECTED',statusMessage:w.status||'',extensionVersion:w.collector.extensionVersion||null,latestExtensionVersion:LATEST_EXTENSION,updateAvailable:!!w.collector.extensionVersion&&w.collector.extensionVersion!==LATEST_EXTENSION,dictionaryVersion:dict().version,lastHeartbeat:w.collector.lastHeartbeatAt||null,lastRelevantMessage:w.collector.lastRelevantMessageAt||null,lastSync:w.lastSync||null,checkpoint:w.checkpoint||null,coverage:coverage(),metrics:metrics(),candidates:w.candidates.slice(0,200).map(publicCandidate),pending:w.pending.slice(0,100),images:w.images.slice(0,100),diagnostics:w.diagnostics||null});
+ function rate(c,kind,now=Date.now()){c.rate ||= {};let r=c.rate[kind];if(!r||now-r.start>=60000)r=c.rate[kind]={start:now,count:0};r.count++;const limit=kind==='evidence'?600:180;if(r.count>limit)throw new Error('Collector excedeu o limite temporário de requisições.');}
+ function heartbeat(input){
+  const now=Date.now(),c=w.collector,prev=c.lastHeartbeatAt,status=collectorStates.has(input.status)?input.status:'ERROR';
+  if(prev&&now-prev>90000)w.gaps.push({startAt:prev,endAt:now,reason:'COLLECTION_GAP'});
+  if(status==='CONNECTED'&&prev&&now-prev<=90000){const last=w.coverageSegments.at(-1);if(last&&prev-last.endAt<=90000)last.endAt=now;else w.coverageSegments.push({startAt:prev,endAt:now});}
+  c.status=status;c.lastHeartbeatAt=now;c.extensionVersion=String(input.extensionVersion||'').slice(0,30);c.queueSize=safeNum(input.queueSize,0,10000);c.metrics={...(c.metrics||{}),...cleanMetrics(input.metrics)};w.diagnostics=cleanDiagnostics(input.diagnostics);
+  w.coverageSegments=w.coverageSegments.slice(-3000);w.gaps=w.gaps.slice(-1000);w.status=status;
+ }
  async function control(path,input){
-  if(path==='/api/whatsapp/pair-code'){pairing={code:randomBytes(12).toString('hex'),expires:Date.now()+600000};attempts=0;return {code:pairing.code,expires:pairing.expires};}
-  if(path==='/api/whatsapp/disconnect'){state.whatsapp.connection=null;pairing=null;state.whatsapp.status='Desconectado';await persist();return {ok:true};}
-  if(path==='/api/whatsapp/dismiss'){state.whatsapp.pending=state.whatsapp.pending.filter(p=>p.id!==input.id);await persist();return {ok:true};}
+  if(path==='/api/whatsapp/pair-code'){pairing={code:randomBytes(12).toString('hex'),expires:Date.now()+600000};attempts=0;return {code:pairing.code,expires:pairing.expires,group:'Lunarian'};}
+  if(path==='/api/whatsapp/disconnect'){w.connection=null;w.collector.status='DISCONNECTED';pairing=null;w.status='Desconectado';await persist();return {ok:true};}
+  if(path==='/api/whatsapp/candidate-reject'){const c=w.candidates.find(x=>x.id===input.id);if(!c)throw new Error('Candidato não encontrado');if(c.status!=='PENDING')throw new Error('Candidato já revisado');c.status='REJECTED';c.reviewedAt=Date.now();c.reviewReason=String(input.reason||'').slice(0,300);await persist();broadcast('update',{});return {ok:true,candidate:publicCandidate(c)};}
+  if(path==='/api/whatsapp/candidate-confirm'){
+   const c=w.candidates.find(x=>x.id===input.id);if(!c)throw new Error('Candidato não encontrado');if(c.status!=='PENDING')throw new Error('Candidato já revisado');
+   const boss=bossNames().find(n=>norm(n)===norm(input.boss||c.boss));if(!boss)throw new Error('Boss inválido');
+   const at=Number(input.at)||Number(c.estimatedAt)||Number(c.firstEvidenceAt);if(!Number.isFinite(at)||at>Date.now()+60000||at<Date.parse('2020-01-01'))throw new Error('Horário de confirmação inválido');
+   const p=timeParts(at),row=validateGroupRows({world:c.world,rows:[{boss,date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`,result:'encontrado',favorable:'unknown'}]},bossNames(),worlds)[0];
+   const record={...row,id:'wa-confirmed-'+c.id,origin:'whatsapp-confirmed',candidateId:c.id,evidenceIds:[...c.evidenceIds],recordedAt:Date.now(),timeBasis:'manual-confirmation'};
+   if(!state.groupChecks.some(x=>x.candidateId===c.id)){state.groupChecks.unshift(record);await onRecords([record]);}
+   c.status='CONFIRMED';c.reviewedAt=Date.now();c.confirmedAt=c.reviewedAt;c.confirmedEventAt=at;c.confirmedBoss=boss;await persist();broadcast('update',{});return {ok:true,candidate:publicCandidate(c)};
+  }
+  if(path==='/api/whatsapp/alias-approve'){const boss=bossNames().find(n=>norm(n)===norm(input.boss)),alias=String(input.alias||'').trim();if(!boss||alias.length<2||alias.length>80)throw new Error('Alias inválido');w.aliases[boss]=[...new Set([...(w.aliases[boss]||[]),alias])].slice(0,50);await persist();return {ok:true,dictionary:dict()};}
+  if(path==='/api/whatsapp/dismiss'){w.pending=w.pending.filter(p=>p.id!==input.id);await persist();return {ok:true};}
   return null;
  }
  async function handle(req,res,url){
-  if(!url.pathname.startsWith('/extension/'))return false;
+  const isCollector=url.pathname.startsWith('/extension/')||url.pathname==='/api/community/evidence';if(!isCollector)return false;
   const origin=req.headers.origin||'',match=origin.match(/^chrome-extension:\/\/([a-p]{32})$/)||(!origin?String(req.headers['x-radar-extension']||'').match(/^([a-p]{32})$/):null);
   const reply=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store',...(match&&origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})});res.end(JSON.stringify(data));};
   if(!match){reply(403,{error:'Origem da extensão inválida'});return true;}
@@ -39,44 +70,44 @@ export function createWhatsAppSync({state,persist,broadcast,names,worlds,readBod
    const input=await readBody(req);
    if(url.pathname==='/extension/pair'){
     if(++attempts>10||!pairing||pairing.expires<Date.now()||input.code!==pairing.code)throw new Error('Código inválido ou expirado. Gere outro no painel.');
-    if(typeof input.group!=='string'||!input.group.trim()||input.group.length>150||badGroup(input.group)||!worlds.includes(input.world))throw new Error('Informe o nome verdadeiro do grupo; Dados do perfil é um botão do WhatsApp.');
-    const key=randomBytes(32).toString('hex');state.whatsapp={connection:{extensionId:match[1],keyHash:digest(key),group:input.group.trim(),world:input.world},seen:[],pending:state.whatsapp.pending,identified:state.whatsapp.identified,images:state.whatsapp.images,checkpoint:null,status:'Aguardando primeira leitura'};pairing=null;await persist();broadcast('update',{});reply(200,{key,group:state.whatsapp.connection.group,world:input.world,names:names()});return true;
+    if(typeof input.group!=='string'||!exactGroup(input.group)||badGroup(input.group)||!worlds.includes(input.world))throw new Error('Esta versão monitora exclusivamente o grupo Lunarian.');
+    const key=randomBytes(32).toString('hex');w.connection={extensionId:match[1],keyHash:digest(key),group:'Lunarian',world:input.world,collectorId:'collector-'+randomBytes(8).toString('hex'),pairedAt:Date.now()};w.checkpoint=null;w.collector={status:'CONNECTED',metrics:{},captureLatencies:[],lastHeartbeatAt:Date.now(),extensionVersion:String(input.extensionVersion||'').slice(0,30)};pairing=null;await persist();broadcast('update',{});reply(200,{key,collectorId:w.connection.collectorId,group:'Lunarian',world:input.world,dictionary:dict(),latestExtensionVersion:LATEST_EXTENSION});return true;
    }
-   const c=state.whatsapp.connection;
-   if(!c||c.extensionId!==match[1]||digest(String(req.headers['x-radar-key']||''))!==c.keyHash)throw new Error('Extensão desconectada. Conecte novamente no painel.');
-   if(input.group!==c.group)throw new Error('Este grupo não está autorizado.');
-   if(badGroup(c.group))throw new Error('Atualize a extensão e conecte o nome verdadeiro do grupo. Dados do perfil não é uma conversa.');
+   const c=w.connection;if(!c||c.extensionId!==match[1]||digest(String(req.headers['x-radar-key']||''))!==c.keyHash)throw new Error('Extensão desconectada. Conecte novamente no painel.');
+   if(input.group&& !exactGroup(input.group))throw new Error('Somente o grupo Lunarian está autorizado.');
+   if(url.pathname==='/extension/config'){rate(c,'heartbeat');reply(200,{group:'Lunarian',world:c.world,collectorId:c.collectorId,dictionary:dict(),checkpoint:w.checkpoint,latestExtensionVersion:LATEST_EXTENSION,serverTime:Date.now()});return true;}
+   if(url.pathname==='/extension/heartbeat'){rate(c,'heartbeat');heartbeat(input);if(Date.now()-lastHeartbeatPersist>60000){lastHeartbeatPersist=Date.now();await persist();}broadcast('update',{});reply(200,{ok:true,serverTime:Date.now(),dictionaryVersion:dict().version});return true;}
+   if(url.pathname==='/api/community/evidence'){
+    rate(c,'evidence');const batch=Array.isArray(input.evidence)?input.evidence:[];if(!batch.length||batch.length>100)throw new Error('Envie de 1 a 100 evidências por lote.');
+    const known=new Set(w.communityEvidence.map(x=>x.id)),accepted=[],duplicates=[],changedCandidates=new Set(),receivedAt=Date.now(),d=dict(),byName=new Map(d.entries.map(x=>[norm(x.name),x]));
+    for(const raw of batch){
+     if(typeof raw.messageFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(raw.messageFingerprint)||!contexts.has(raw.contextClassification))throw new Error('Evidência inválida');
+     const candidates=(raw.bossCandidates||[]).slice(0,5).map(x=>{const b=byName.get(norm(x.name));if(!b)return null;return {boss_id:b.boss_id,name:b.name,matchType:['EXACT','ALIAS','FUZZY'].includes(x.matchType)?x.matchType:'FUZZY',similarity:Math.max(0,Math.min(1,Number(x.similarity)||0))};}).filter(Boolean);if(!candidates.length)continue;
+     const item={messageFingerprint:raw.messageFingerprint,source:'whatsapp-lunarian',group:'Lunarian',world:c.world,bossCandidates:candidates,messageTimestamp:Number(raw.messageTimestamp)||null,capturedTimestamp:Number(raw.capturedTimestamp)||receivedAt,receivedAt,authorHash:/^[a-f0-9]{16,64}$/.test(raw.authorHash||'')?raw.authorHash:null,contextClassification:raw.contextClassification,text:String(raw.text||'').slice(0,1000),normalizedText:String(raw.normalizedText||'').slice(0,1000),extensionVersion:String(raw.extensionVersion||'').slice(0,30),collectorId:c.collectorId};item.id=evidenceId(item);
+     if(known.has(item.id)){duplicates.push(item.id);continue;}known.add(item.id);w.communityEvidence.unshift(item);accepted.push(item.id);w.collector.lastRelevantMessageAt=receivedAt;w.collector.captureLatencies.push(Math.max(0,receivedAt-item.capturedTimestamp));w.collector.captureLatencies=w.collector.captureLatencies.slice(-5000);
+     const candidate=mergeEvidence(w.candidates,item);if(candidate){enrichCandidate(candidate,w.communityEvidence);changedCandidates.add(candidate.id);}
+    }
+    w.communityEvidence=w.communityEvidence.slice(0,20000);w.candidates=w.candidates.slice(0,5000);w.collector.metrics={...(w.collector.metrics||{}),relevantMessages:safeNum((w.collector.metrics?.relevantMessages||0)+accepted.length),duplicates:safeNum((w.collector.metrics?.duplicates||0)+duplicates.length)};w.lastSync=receivedAt;await persist();broadcast('update',{});
+    for(const id of changedCandidates){const candidate=w.candidates.find(x=>x.id===id);if(candidate&&candidate.investigation?.status==='PENDING'){candidate.investigation={status:'REQUESTED',at:Date.now()};Promise.resolve(investigate(publicCandidate(candidate))).then(()=>{candidate.investigation={status:'COMPLETED',at:Date.now()};return persist();}).catch(e=>{candidate.investigation={status:'ERROR',at:Date.now(),error:String(e.message||e).slice(0,200)};return persist();});}}
+    reply(200,{ok:true,accepted,duplicates,queueAck:accepted.length+duplicates.length,serverTime:receivedAt});return true;
+   }
    if(url.pathname==='/extension/image'){
-    if(!/^[a-f0-9]{64}$/.test(input.messageId||'')||!state.whatsapp.seen.includes(input.messageId))throw new Error('Importe a mensagem do grupo antes da imagem.');
-    const image=decodeGroupImage(input.data),id=digest(input.messageId+'|'+image.hash);if(state.whatsapp.images.some(i=>i.id===id)){reply(200,{ok:true,id});return true;}
-    if(state.whatsapp.images.length>=2000)throw new Error('Limite de 2 mil imagens atingido. Exporte antes de continuar.');
-    await saveImage(id,image);const row=state.whatsapp.identified.find(x=>x.id===input.messageId),p=state.whatsapp.pending.find(x=>x.id===input.messageId);
-    state.whatsapp.images.unshift({id,messageId:input.messageId,bosses:row?.bosses||p?.bosses||[],at:row?.at||Date.parse(p?.date+'T'+(p?.time||'12:00')+':00-03:00')||0,world:c.world,group:c.group,type:image.type,url:'/api/group-image?id='+id});await persist();broadcast('update',{});reply(200,{ok:true,id});return true;
+    const related=w.communityEvidence.some(e=>e.messageFingerprint===input.messageId);if(!/^[a-f0-9]{64}$/.test(input.messageId||'')||!related)throw new Error('Envie primeiro a evidência da mensagem relacionada.');
+    const image=decodeGroupImage(input.data),id=digest(input.messageId+'|'+image.hash);if(w.images.some(i=>i.id===id)){reply(200,{ok:true,id});return true;}if(w.images.length>=2000)throw new Error('Limite de 2 mil imagens atingido.');
+    await saveImage(id,image);w.images.unshift({id,messageId:input.messageId,at:Date.now(),world:c.world,group:'Lunarian',type:image.type,url:'/api/group-image?id='+id});await persist();broadcast('update',{});reply(200,{ok:true,id});return true;
    }
-   if(url.pathname==='/extension/config'){reply(200,{names:names(),checkpoint:state.whatsapp.checkpoint,world:c.world});return true;}
-   if(url.pathname==='/extension/status'){state.whatsapp.status=String(input.status||'').slice(0,250);state.whatsapp.diagnostics=cleanDiagnostics(input.diagnostics);await persist();broadcast('update',{});reply(200,{ok:true});return true;}
-   if(url.pathname!=='/extension/sync')throw new Error('Rota inválida');
-   if(!Array.isArray(input.messages)||input.messages.length>100)throw new Error('Envie até 100 mensagens por lote.');
-   if(input.checkpoint){const cp=input.checkpoint;if(!/^[a-f0-9]{64}$/.test(cp.id||'')||!Number.isFinite(cp.at)||cp.at>Date.now()+60000||cp.at<Date.parse('2020-01-01'))throw new Error('Marcador inválido');}
-   const seen=new Set(state.whatsapp.seen),existing=new Set(state.groupChecks.map(checkKey));let added=0,pending=0;
-   const next=[],reviews=[],ids=[],recognized=[];
-   for(const m of input.messages){
-    if(!/^[a-f0-9]{64}$/.test(m.id||'')||typeof m.text!=='string'||m.text.length>6000)throw new Error('Mensagem inválida');
-    if(seen.has(m.id))continue;
-    const parsed=extractObservations(m,names());
-    if(parsed.mentioned?.length||parsed.rows.length)recognized.push({id:m.id,bosses:[...new Set([...(parsed.mentioned||[]),...parsed.rows.map(r=>r.boss)])],at:Date.parse(m.date+'T'+(m.time||'12:00')+':00-03:00')||0});
-    let rows=[];try{if(parsed.rows.length)rows=validateGroupRows({world:c.world,rows:parsed.rows},names(),worlds);}catch{parsed.pending=true;}
-    for(const row of rows){const key=checkKey(row);if(existing.has(key))continue;existing.add(key);next.push({...row,favorable:favorable(row),id:'wa-'+m.id+'-'+added,batchId:'wa-'+m.id,recordedAt:Date.now(),origin:'whatsapp',timeBasis:'message'});added++;}
-    if(parsed.pending){reviews.push({id:m.id,bosses:(parsed.mentioned||[]).slice(0,20),date:typeof m.date==='string'?m.date.slice(0,10):'',time:typeof m.time==='string'?m.time.slice(0,5):'',reason:m.media&&!parsed.mentioned?.length?'Foto sem nome identificado. Confira a imagem no grupo e informe o boss e o resultado.':'Confira o resultado ou a data: a mensagem não permitiu registrar tudo com segurança.'});pending++;}
-    ids.push(m.id);seen.add(m.id);
+   if(url.pathname==='/extension/status'){heartbeat({status:input.status,extensionVersion:input.extensionVersion,queueSize:input.queueSize,metrics:input.metrics,diagnostics:input.diagnostics});reply(200,{ok:true});return true;}
+   if(url.pathname==='/extension/sync'){
+    // Compatibility with extension <=1.3: retain as review-only evidence. Never calls onRecords.
+    if(!Array.isArray(input.messages)||input.messages.length>100)throw new Error('Envie até 100 mensagens por lote.');const seen=new Set(w.seen),reviews=[];
+    for(const m of input.messages){if(!/^[a-f0-9]{64}$/.test(m.id||'')||typeof m.text!=='string'||m.text.length>6000)throw new Error('Mensagem inválida');if(seen.has(m.id))continue;const parsed=extractObservations(m,bossNames());if(parsed.mentioned?.length)reviews.push({id:m.id,bosses:parsed.mentioned.slice(0,20),date:String(m.date||'').slice(0,10),time:String(m.time||'').slice(0,5),reason:'Extensão antiga: revise manualmente. Nenhum spawn foi confirmado automaticamente.'});seen.add(m.id);}
+    w.seen=[...seen].slice(-20000);w.pending.unshift(...reviews);w.pending=w.pending.slice(0,2000);w.lastSync=Date.now();w.status='Extensão antiga detectada. Atualize para 1.4.0; mensagens permanecem apenas para revisão.';await persist();broadcast('update',{});reply(200,{added:0,pending:reviews.length,checkpoint:w.checkpoint,legacy:true});return true;
    }
-   if(state.groupChecks.length+next.length>50000||state.whatsapp.pending.length+reviews.length>2000)throw new Error('Histórico ou pendências cheio. Exporte e revise antes de continuar.');
-   state.groupChecks.unshift(...next);if(next.length)await onRecords(next);state.whatsapp.pending.unshift(...reviews);const oldIdentified=new Map(state.whatsapp.identified.map(x=>[x.id,x]));for(const r of recognized)oldIdentified.set(r.id,r);state.whatsapp.identified=[...oldIdentified.values()].slice(-20000);state.whatsapp.seen=[...seen].slice(-20000);state.whatsapp.diagnostics=cleanDiagnostics(input.diagnostics);
-   if(input.checkpoint&&input.coverage!=='gap'){const cp=input.checkpoint;if(!state.whatsapp.checkpoint||cp.at>=state.whatsapp.checkpoint.at)state.whatsapp.checkpoint={id:cp.id,at:cp.at};}
-   state.whatsapp.lastSync=Date.now();state.whatsapp.status=input.coverage==='gap'?'Recuperação incompleta: abra o grupo e carregue mensagens mais antigas.':input.coverage==='baseline'?'Primeira leitura concluída; acompanhamento das próximas mensagens ativo.':'Leitura atualizada';await persist();broadcast('update',{});reply(200,{added,pending,checkpoint:state.whatsapp.checkpoint});
-  }catch(e){reply(400,{error:e.message});}
+   throw new Error('Rota inválida');
+  }catch(e){w.collector.metrics={...(w.collector.metrics||{}),errors:safeNum((w.collector.metrics?.errors||0)+1),requests:safeNum((w.collector.metrics?.requests||0)+1)};reply(400,{error:e.message});}
   return true;
  }
  return {handle,control,publicState};
 }
-function cleanDiagnostics(d){if(!d)return null;return {detected:String(d.detected||'').slice(0,150),visible:Math.max(0,Math.min(100000,Number(d.visible)||0)),relevant:Math.max(0,Math.min(100000,Number(d.relevant)||0)),withoutDate:Math.max(0,Math.min(100000,Number(d.withoutDate)||0))};}
+function cleanDiagnostics(d){if(!d)return null;return {configured:String(d.configured||'').slice(0,150),detected:String(d.detected||'').slice(0,150),visible:safeNum(d.visible,0,100000),relevant:safeNum(d.relevant,0,100000),domOk:!!d.domOk,fallbackUsed:!!d.fallbackUsed};}
+function cleanMetrics(m){if(!m||typeof m!=='object')return {};const out={};for(const k of ['messagesSeen','messagesFiltered','bossMatches','exactMatches','fuzzyMatches','duplicates','errors','observerEvents','batches','requests'])out[k]=safeNum(m[k],0,1e12);return out;}
