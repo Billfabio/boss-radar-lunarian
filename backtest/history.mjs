@@ -3,7 +3,7 @@ import {learnMethodResult} from '../learning/model-performance.mjs';
 import {calibrateConfidence,calibrationReport} from '../learning/calibration.mjs';
 const H=3600000,DAY=86400000;
 const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&['appearance','kill'].includes(e.eventType);
-const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction);
+const precise=e=>(e.evidence||[]).some(x=>(['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 const q=(a,p)=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),x=(s.length-1)*p,i=Math.floor(x),f=x-i;return s[i]+((s[i+1]??s[i])-s[i])*f;};
 function rowsFor(events,boss,world){return events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);}
