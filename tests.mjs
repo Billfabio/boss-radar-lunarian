@@ -223,7 +223,7 @@ test('adaptive engine gives recent interval influence when boss behavior changes
 
 test('forecast resolution learns method performance independently per boss',()=>{
  const models={},base=Date.parse('2026-10-01T20:00:00-03:00'),forecast={id:'f1',boss:'A',world:'Lunarian',baseEventId:'prev',baseEventAt:base-72*3600000,createdAt:base-71*3600000,windowStart:base-3600000,windowEnd:base+3600000,likelyAt:base-10*60000,methods:[{name:'recent_interval',predictedAt:base-5*60000},{name:'weekday',predictedAt:base-5*3600000}]};
- const event={id:'actual',boss:'A',world:'Lunarian',eventType:'kill',estimatedAt:base,status:'confirmed_auto'};
+ const event={id:'actual',boss:'A',world:'Lunarian',eventType:'kill',estimatedAt:base,startAt:base,endAt:base,status:'confirmed_auto',evidence:[{precision:'minute',estimatedAt:base}]};
  resolveForecasts([forecast],event,models);
  assert.ok(models['Lunarian|a'].methods.recent_interval.emaErrorMinutes<models['Lunarian|a'].methods.weekday.emaErrorMinutes);
  assert.equal(adaptiveMethodWeight(models,'B','Lunarian','recent_interval'),1);
