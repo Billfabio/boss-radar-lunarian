@@ -6,12 +6,17 @@ export function aiObservability({events=[],forecasts=[],sources=[],world,predict
  const calibration=calibrationReport(forecasts,world),bosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],drifts=bosses.map(boss=>({boss,...detectDrift(events,boss,world)})).filter(x=>x.detected);
  const anomalies=events.filter(e=>e.world===world&&e.anomaly).length,conflicts=events.filter(e=>e.world===world&&e.qualityStatus==='CONFLITANTE').length;
  const sourceRows=sources.filter(s=>s.active);
+ const methodRows=new Map();for(const f of resolved){const ensemble={name:'adaptive_ensemble',hit:f.windowHit,error:f.errorMinutes};for(const m of [ensemble,...(f.methods||[])]){if(!m?.name)continue;const row=methodRows.get(m.name)||{samples:0,hits:0,preciseSamples:0,errorSum:0};row.samples++;if(m.hit??(m.name==='adaptive_ensemble'?f.windowHit:false))row.hits++;const err=m.name==='adaptive_ensemble'?f.errorMinutes:m.actualErrorMinutes;if(Number.isFinite(err)){row.preciseSamples++;row.errorSum+=err;}methodRows.set(m.name,row);}}
  return {
   prediction_latency:Number.isFinite(predictionLatencyMs)?Math.round(predictionLatencyMs*10)/10:null,
   prediction_error_minutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,
-  source_accuracy:Object.fromEntries(sourceRows.map(s=>[s.id,s.reliability])),
+  source_accuracy:Object.fromEntries(sourceRows.map(s=>[s.id,s.preciseAccuracyRate??s.accuracyRate??null])),
+  source_reputation:Object.fromEntries(sourceRows.map(s=>[s.id,s.reliability])),
   model_accuracy:resolved.length?Math.round(1000*resolved.filter(f=>f.windowHit).length/resolved.length)/10:null,
+  model_accuracy_by_method:Object.fromEntries([...methodRows].map(([name,x])=>[name,{samples:x.samples,windowAccuracy:x.samples?Math.round(1000*x.hits/x.samples)/10:null,preciseSamples:x.preciseSamples,maeMinutes:x.preciseSamples?Math.round(x.errorSum/x.preciseSamples*10)/10:null}])),
   confidence_calibration_error:calibration.ece,
+  confidence_calibration_max_gap:calibration.mce,
+  confidence_brier_score:calibration.brier,
   data_quality_score:quality.averageScore,
   drift_score:drifts.length?Math.round(drifts.reduce((n,x)=>n+x.score,0)/drifts.length*10)/10:0,
   anomaly_rate:events.filter(e=>e.world===world).length?Math.round(1000*anomalies/events.filter(e=>e.world===world).length)/10:0,
