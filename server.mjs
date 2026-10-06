@@ -170,7 +170,7 @@ const server=http.createServer(async(req,res)=>{
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
     const url=new URL(req.url,ORIGIN),remote=String(req.socket?.remoteAddress||req.headers['cf-connecting-ip']||'unknown');
     if(url.pathname==='/login'){
-      if(!AUTH_REQUIRED)return new Response();
+      if(!AUTH_REQUIRED){res.writeHead(303,{Location:'/'});res.end();return;}
       if(req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"});res.end(loginHtml());return;}
       if(req.method==='POST'){
         const rate=loginLimiter.check(remote);if(!rate.allowed)return json(res,429,{error:'Muitas tentativas. Aguarde alguns minutos.'});
