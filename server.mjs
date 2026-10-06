@@ -192,7 +192,7 @@ const server=http.createServer(async(req,res)=>{
         const stored=fresh.map((c,i)=>({...c,id:input.batchId+'-'+i,batchId:input.batchId,recordedAt:Date.now()}));state.groupChecks.unshift(...stored);await intelligence.ingestChecks(stored);await persist();broadcast('update',{});return json(res,200,{added:fresh.length,duplicates:rows.length-fresh.length});
       }
       if(url.pathname==='/api/group-checks/undo'){
-        if(typeof input.batchId!=='string')throw new Error('Rodada inválida');state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await persist();broadcast('update',{});return json(res,200,{ok:true});
+        if(typeof input.batchId!=='string')throw new Error('Rodada inválida');const removed=state.groupChecks.filter(c=>c.batchId===input.batchId);await intelligence.removeChecks(removed);state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await persist();broadcast('update',{});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
