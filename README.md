@@ -1,6 +1,6 @@
 # Boss Radar · RubinOT
 
-> Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).
+> Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).\n> Evolução da camada de confiança: consulte [RELATORIO-CONFIABILIDADE-V4.md](RELATORIO-CONFIABILIDADE-V4.md).
 
 Plataforma de monitoramento, histórico e previsão de bosses do RubinOT.
 
