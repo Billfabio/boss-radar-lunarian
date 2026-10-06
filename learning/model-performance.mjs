@@ -1,0 +1,43 @@
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const key=(world,boss)=>world+'|'+String(boss).toLowerCase();
+export function ensureModel(models,boss,world){
+ const k=key(world,boss);models[k] ||= {boss,world,methods:{},resolved:0,lastResolvedAt:0};
+ return models[k];
+}
+function ensureMethod(model,name){model.methods[name] ||= {name,count:0,emaErrorMinutes:null,emaHitRate:null,lastErrorMinutes:null,lastUpdatedAt:0};return model.methods[name];}
+export function learnMethodResult(models,boss,world,name,errorMinutes,hit,at=Date.now()){
+ const model=ensureModel(models,boss,world),m=ensureMethod(model,name),alpha=m.count<5?.35:.18;
+ m.count++;m.lastErrorMinutes=Math.round(errorMinutes*10)/10;
+ m.emaErrorMinutes=m.emaErrorMinutes==null?errorMinutes:(1-alpha)*m.emaErrorMinutes+alpha*errorMinutes;
+ const h=hit?1:0;m.emaHitRate=m.emaHitRate==null?h:(1-alpha)*m.emaHitRate+alpha*h;m.lastUpdatedAt=at;
+ return m;
+}
+export function adaptiveMethodWeight(models,boss,world,name,scaleMinutes=1440){
+ const m=ensureModel(models,boss,world).methods[name];if(!m||!m.count)return 1;
+ const experience=1-Math.exp(-m.count/12),errorScore=Math.exp(-Math.max(0,m.emaErrorMinutes||scaleMinutes)/Math.max(60,scaleMinutes)),hit=m.emaHitRate==null?.5:m.emaHitRate;
+ return clamp((.35+.65*experience)*(.35+.4*errorScore+.25*hit),.12,1.35);
+}
+export function resolveForecasts(forecasts,event,models){
+ if(!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt))return [];
+ const candidates=forecasts.filter(f=>!f.resolvedAt&&f.boss===event.boss&&f.world===event.world&&f.baseEventId&&f.baseEventId!==event.id&&f.baseEventAt<event.estimatedAt&&f.createdAt<event.estimatedAt);
+ if(!candidates.length)return [];
+ // Only the forecast created from the immediately previous confirmed event is scored.
+ const forecast=candidates.sort((a,b)=>b.baseEventAt-a.baseEventAt||a.createdAt-b.createdAt)[0];
+ const actual=event.estimatedAt;forecast.resolvedAt=Date.now();forecast.actualAt=actual;
+ forecast.windowHit=actual>=forecast.windowStart&&actual<=forecast.windowEnd;
+ forecast.errorMinutes=Number.isFinite(forecast.likelyAt)?Math.round(Math.abs(actual-forecast.likelyAt)/6000)/10:null;
+ forecast.signedErrorMinutes=Number.isFinite(forecast.likelyAt)?Math.round((actual-forecast.likelyAt)/6000)/10:null;
+ for(const method of forecast.methods||[]){
+   if(!Number.isFinite(method.predictedAt))continue;
+   const err=Math.abs(actual-method.predictedAt)/60000;
+   const tolerance=Math.max(60,(forecast.windowEnd-forecast.windowStart)/120000);
+   const hit=err<=tolerance;
+   method.actualErrorMinutes=Math.round(err*10)/10;method.hit=hit;
+   learnMethodResult(models,event.boss,event.world,method.name,err,hit,forecast.resolvedAt);
+ }
+ const model=ensureModel(models,event.boss,event.world);model.resolved++;model.lastResolvedAt=forecast.resolvedAt;
+ return [forecast];
+}
+export function modelPublic(models,world){
+ return Object.values(models).filter(m=>m.world===world).map(m=>({boss:m.boss,world:m.world,resolved:m.resolved,lastResolvedAt:m.lastResolvedAt,methods:Object.values(m.methods).map(x=>({...x,emaErrorMinutes:x.emaErrorMinutes==null?null:Math.round(x.emaErrorMinutes*10)/10,emaHitRate:x.emaHitRate==null?null:Math.round(x.emaHitRate*1000)/10})).sort((a,b)=>(b.count||0)-(a.count||0))})).sort((a,b)=>b.resolved-a.resolved||a.boss.localeCompare(b.boss));
+}
