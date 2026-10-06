@@ -29,7 +29,8 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
   const rows=rowsFor(events,boss,world).slice(-maxPerBoss),results=[];
   for(let i=minTrain;i<rows.length;i++){
    const prior=rows.slice(0,i),actual=rows[i],baseMethods=methodsFor(prior),adaptive=predictAdaptive(prior,boss,world,models,actual.estimatedAt-1);
-   let calibrated=null;if(adaptive.status==='ready'){calibrated=calibrateConfidence(adaptive.confidence,calibrationHistory,world,boss);if(calibrated.samples<20)calibrated=calibrateConfidence(adaptive.confidence,calibrationHistory,world,null);}
+   const priorCalibration=calibrationHistory.filter(x=>(x.resolvedAt||0)<actual.estimatedAt);
+   let calibrated=null;if(adaptive.status==='ready'){calibrated=calibrateConfidence(adaptive.confidence,priorCalibration,world,boss);if(calibrated.samples<20)calibrated=calibrateConfidence(adaptive.confidence,priorCalibration,world,null);}
    const methods=[...baseMethods];
    if(adaptive.status==='ready'){
     for(const m of adaptive.methods||[])if(!methods.some(x=>x.name===m.name))methods.push({name:m.name,predictedAt:m.predictedAt,windowStart:adaptive.windowStart,windowEnd:adaptive.windowEnd});
