@@ -47,11 +47,12 @@ export function noteEvidenceOutcome(sources,id,{correct,errorMs=0,delayMs=null,c
  if(Number.isFinite(consistency)){s.consistencySum=(s.consistencySum||0)+clamp(consistency,0,1);s.consistencySamples=(s.consistencySamples||0)+1;}
  s.recentOutcomes ||= [];s.recentOutcomes.push({at,correct:!!correct,errorMs:Number.isFinite(errorMs)?Math.max(0,errorMs):null,precision:precision||null,consistency:Number.isFinite(consistency)?clamp(consistency,0,1):null});if(s.recentOutcomes.length>100)s.recentOutcomes.splice(0,s.recentOutcomes.length-100);
  if(updateCircuit&&s.kind!=='manual'){
-   const recent=s.recentOutcomes.slice(-12),accuracy=recent.length?recent.reduce((n,x)=>n+(x.correct?1:0),0)/recent.length:1;
-   if(recent.length>=8&&accuracy<.35){s.circuitState='OPEN';s.circuitReason='quality';s.qualityRecoverySuccesses=0;s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Fonte suspensa por deterioração recente da qualidade dos dados.';}
-   else if(s.circuitState==='HALF_OPEN'&&s.circuitReason==='quality'){
+   if(s.circuitState==='HALF_OPEN'&&s.circuitReason==='quality'){
      if(correct){s.qualityRecoverySuccesses=(s.qualityRecoverySuccesses||0)+1;if(s.qualityRecoverySuccesses>=3){s.circuitState='CLOSED';s.circuitReason=null;s.suspendedUntil=0;s.lastError='';s.qualityRecoverySuccesses=0;}}
      else{s.qualityRecoverySuccesses=0;s.circuitState='OPEN';s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Recuperação de qualidade falhou; fonte novamente em quarentena.';}
+   }else{
+     const recent=s.recentOutcomes.slice(-12),accuracy=recent.length?recent.reduce((n,x)=>n+(x.correct?1:0),0)/recent.length:1;
+     if(recent.length>=8&&accuracy<.35){s.circuitState='OPEN';s.circuitReason='quality';s.qualityRecoverySuccesses=0;s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Fonte suspensa por deterioração recente da qualidade dos dados.';}
    }
  }
 }
