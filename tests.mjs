@@ -207,3 +207,30 @@ test('dynamic source reliability updates all unevaluated evidence in confirmed e
  assert.ok(sources['otbosstracker'].alpha>beforeA);assert.ok(sources['whatsapp-group'].alpha>beforeB);
  assert.equal(event.evidence.every(x=>x.evaluated),true);
 });
+
+
+import {predictAdaptive} from './prediction/adaptive-engine.mjs';
+import {resolveForecasts,adaptiveMethodWeight} from './learning/model-performance.mjs';
+import {forecastMetrics} from './metrics/forecast-metrics.mjs';
+
+test('adaptive engine gives recent interval influence when boss behavior changes',()=>{
+ const H=3600000,base=Date.parse('2026-08-01T20:00:00-03:00'),events=[];let at=base;
+ for(let i=0;i<12;i++){events.push({id:'old'+i,boss:'Change Boss',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]});at+=72*H;}
+ for(let i=0;i<8;i++){events.push({id:'new'+i,boss:'Change Boss',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]});at+=60*H;}
+ const p=predictAdaptive(events,'Change Boss','Lunarian',{});
+ assert.equal(p.status,'ready');assert.ok(p.intervalRecentMs<p.intervalAverageMs);assert.ok(p.methods.find(x=>x.name==='recent_interval').weight>=p.methods.find(x=>x.name==='historical_interval').weight*.8);
+});
+
+test('forecast resolution learns method performance independently per boss',()=>{
+ const models={},base=Date.parse('2026-10-01T20:00:00-03:00'),forecast={id:'f1',boss:'A',world:'Lunarian',baseEventId:'prev',baseEventAt:base-72*3600000,createdAt:base-71*3600000,windowStart:base-3600000,windowEnd:base+3600000,likelyAt:base-10*60000,methods:[{name:'recent_interval',predictedAt:base-5*60000},{name:'weekday',predictedAt:base-5*3600000}]};
+ const event={id:'actual',boss:'A',world:'Lunarian',eventType:'kill',estimatedAt:base,status:'confirmed_auto'};
+ resolveForecasts([forecast],event,models);
+ assert.ok(models['Lunarian|a'].methods.recent_interval.emaErrorMinutes<models['Lunarian|a'].methods.weekday.emaErrorMinutes);
+ assert.equal(adaptiveMethodWeight(models,'B','Lunarian','recent_interval'),1);
+});
+
+test('rolling forecast metrics report 7 30 and 90 day windows',()=>{
+ const now=Date.now(),mk=(days,hit,error)=>({world:'Lunarian',boss:'B',resolvedAt:now-days*86400000,windowHit:hit,errorMinutes:error});
+ const m=forecastMetrics([mk(2,true,5),mk(15,false,20),mk(60,true,10),mk(120,true,2)],'Lunarian',now);
+ assert.equal(m.days7.predictions,1);assert.equal(m.days30.predictions,2);assert.equal(m.days90.predictions,3);assert.equal(m.all.predictions,4);assert.equal(m.days30.windowAccuracy,50);
+});
