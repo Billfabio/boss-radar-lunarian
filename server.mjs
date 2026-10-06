@@ -202,6 +202,7 @@ const server=http.createServer(async(req,res)=>{
       }
       if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
       if(url.pathname==='/api/intelligence/backtest'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;const result=await heavyQueue.enqueue('backtest:'+world,async()=>intelligence.backtest(world));return json(res,200,result);}
+      if(url.pathname==='/api/intelligence/simulate'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;if(typeof input.boss!=='string'||input.boss.length>140)throw new Error('Boss inválido');return json(res,200,intelligence.simulate(input.boss,world));}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {
