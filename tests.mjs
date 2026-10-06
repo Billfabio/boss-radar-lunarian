@@ -295,7 +295,7 @@ test('adaptive prediction exposes deterministic confidence breakdown summing to 
  for(let i=0;i<12;i++)events.push({id:'cf'+i,boss:'Confidence Boss',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*3600000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]});
  const p=predictAdaptive(events,'Confidence Boss','Lunarian',{});
  assert.equal(p.status,'ready');assert.ok(p.confidenceBreakdown);
- const total=p.confidenceBreakdown.base+p.confidenceBreakdown.history+p.confidenceBreakdown.modelAgreement+p.confidenceBreakdown.sourceReliability+p.confidenceBreakdown.temporalQuality;
+ const total=p.confidenceBreakdown.dataQuality+p.confidenceBreakdown.history+p.confidenceBreakdown.modelAgreement+p.confidenceBreakdown.sourceReliability+p.confidenceBreakdown.temporalQuality+p.confidenceBreakdown.stability;
  assert.ok(Math.abs(total-p.confidence)<=1);
 });
 
