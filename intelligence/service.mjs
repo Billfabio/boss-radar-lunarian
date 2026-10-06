@@ -134,7 +134,13 @@ export function createIntelligence({state,persist,broadcast}){
    const governance=bosses.map(boss=>({boss,...championChallengerReport(intel.forecasts,boss,world)})).filter(x=>x.champion.samples||x.challengers.length);
    const events=intel.events.filter(e=>e.world===world),conflicts=events.filter(e=>e.qualityStatus==='CONFLITANTE'),suspect=events.filter(e=>['SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(e.qualityStatus)),anomalies=events.filter(e=>e.anomaly);
    const alerts=[];
-   for(const src of sources){if(src.circuitState==='OPEN')alerts.push({kind:'source_circuit',severity:'high',message:`${src.name} foi temporariamente suspensa pelo circuit breaker.`,sourceId:src.id});else if(src.evaluatedRecords>=20&&src.reliability<60)alerts.push({kind:'source_reliability',severity:'medium',message:`${src.name} apresentou queda de confiabilidade para ${src.reliability}%.`,sourceId:src.id});}
+   for(const src of sources){
+     if(src.circuitState==='OPEN')alerts.push({kind:'source_circuit',severity:'high',message:`${src.name} foi temporariamente suspensa pelo circuit breaker.`,sourceId:src.id});
+     else if(src.evaluatedRecords>=20&&src.reliability<60)alerts.push({kind:'source_reliability',severity:'medium',message:`${src.name} apresentou queda de confiabilidade para ${src.reliability}%.`,sourceId:src.id});
+     if(src.recentSamples>=8&&src.accuracyRate!=null&&src.recentAccuracy!=null&&src.accuracyRate-src.recentAccuracy>=20)alerts.push({kind:'source_recent_drop',severity:'medium',message:`${src.name}: acurácia recente ${src.recentAccuracy}% está ${Math.round((src.accuracyRate-src.recentAccuracy)*10)/10} p.p. abaixo do histórico.`,sourceId:src.id});
+   }
+   const evidenceTimes=events.flatMap(e=>(e.evidence||[]).map(x=>x.processedAt||x.reportedAt).filter(Number.isFinite)),now=Date.now(),lastHour=evidenceTimes.filter(t=>t>=now-3600000).length,prior=evidenceTimes.filter(t=>t<now-3600000&&t>=now-25*3600000).length,priorHourly=prior/24;
+   if(lastHour>=20&&lastHour>Math.max(20,priorHourly*4))alerts.push({kind:'data_volume_spike',severity:'medium',message:`Volume anormal de dados detectado: ${lastHour} evidências na última hora contra média anterior de ${Math.round(priorHourly*10)/10}/h.`});
    if(performance.deterioration?.detected)alerts.push({kind:'precision_drop',severity:'high',message:performance.deterioration.message});
    for(const d of drifts.slice(0,20))alerts.push({kind:'drift',severity:'medium',message:`Mudança de comportamento detectada em ${d.boss}: ${d.changePercent}% no intervalo recente.`,boss:d.boss});
    if(conflicts.length)alerts.push({kind:'source_conflict',severity:'medium',message:`${conflicts.length} evento(s) com conflito entre fontes aguardando resolução.`});
