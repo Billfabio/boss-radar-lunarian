@@ -19,7 +19,12 @@ import { createStructuredLogger } from './observability/logger.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
-const ORIGIN = `http://127.0.0.1:${PORT}`;
+const HOST = process.env.HOST || '127.0.0.1';
+const ORIGIN = process.env.PUBLIC_ORIGIN || `http://${HOST==='0.0.0.0'?'127.0.0.1':HOST}:${PORT}`;
+const PUBLIC_URL=new URL(ORIGIN);
+const ALLOWED_HOSTS=new Set((process.env.ALLOWED_HOSTS||PUBLIC_URL.host).split(',').map(x=>x.trim()).filter(Boolean));
+if(!['http:','https:'].includes(PUBLIC_URL.protocol))throw new Error('PUBLIC_ORIGIN deve usar http ou https');
+if(HOST!=='127.0.0.1'&&HOST!=='localhost'&&!process.env.PUBLIC_ORIGIN)throw new Error('Defina PUBLIC_ORIGIN ao expor o servidor fora do localhost');
 const DATA = join(ROOT, 'data');
 const bosstiary=JSON.parse(await readFile(join(ROOT,'bosstiary.json'),'utf8'));
 const outfitCache=new Map();
@@ -155,7 +160,7 @@ function validSettings(input) {
 const whatsapp=createWhatsAppSync({state,persist,broadcast,names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
-    if(req.headers.host!==`127.0.0.1:${PORT}`) return json(res,403,{error:'Abra pelo endereço local indicado'});
+    if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
     const url=new URL(req.url,ORIGIN);
     if(await whatsapp.handle(req,res,url))return;
     if(req.method==='POST') {
@@ -248,5 +253,5 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':type+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://cdn.rubinottools.com https://www.tibiawiki.com.br; connect-src 'self'; frame-src https://tibiamaps.io; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"}); res.end(content);
   } catch(e) { const traceId=randomBytes(8).toString('hex');await structured.write('error','request',e.message,{method:req.method,url:req.url},traceId).catch(()=>{});json(res,400,{error:e.message,traceId}); }
 });
-server.listen(PORT,'127.0.0.1',()=>{console.log(`Boss Radar: ${ORIGIN}\nMantenha esta janela aberta para monitorar e enviar alertas.\nA previsão é uma janela de checagem; não garante spawn.`); void poll();});
+server.listen(PORT,HOST,()=>{console.log(`Boss Radar: ${ORIGIN}\nEscutando em ${HOST}:${PORT}.\nA previsão é uma janela de checagem; não garante spawn.`); void poll();});
 setInterval(()=>void poll(),60000).unref();
