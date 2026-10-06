@@ -13,10 +13,10 @@ function sourceUsage(rows){
  const map=new Map();
  for(const event of rows)for(const x of event.evidence||[]){
   if(['DESCARTADO','SUSPEITO'].includes(x.quality?.status)||x.anomaly)continue;
-  const row=map.get(x.sourceId)||{sourceId:x.sourceId,records:0,preciseRecords:0,qualitySum:0,qualitySamples:0};
-  row.records++;if(['minute','hour'].includes(x.precision))row.preciseRecords++;if(Number.isFinite(x.quality?.score)){row.qualitySum+=x.quality.score;row.qualitySamples++;}map.set(x.sourceId,row);
+  const row=map.get(x.sourceId)||{sourceId:x.sourceId,records:0,preciseRecords:0,qualitySum:0,qualitySamples:0,refs:new Set()};
+  row.records++;if(['minute','hour'].includes(x.precision))row.preciseRecords++;if(Number.isFinite(x.quality?.score)){row.qualitySum+=x.quality.score;row.qualitySamples++;}if(x.sourceRef)row.refs.add(String(x.sourceRef));map.set(x.sourceId,row);
  }
- return [...map.values()].map(x=>({sourceId:x.sourceId,records:x.records,preciseRecords:x.preciseRecords,averageQuality:x.qualitySamples?Math.round(x.qualitySum/x.qualitySamples*10)/10:null})).sort((a,b)=>b.records-a.records||a.sourceId.localeCompare(b.sourceId));
+ return [...map.values()].map(x=>({sourceId:x.sourceId,records:x.records,preciseRecords:x.preciseRecords,averageQuality:x.qualitySamples?Math.round(x.qualitySum/x.qualitySamples*10)/10:null,sourceRefs:[...x.refs].slice(0,5)})).sort((a,b)=>b.records-a.records||a.sourceId.localeCompare(b.sourceId));
 }
 const circHour=at=>{const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'numeric',hour12:false,minute:'numeric'}).formatToParts(new Date(at));const o=Object.fromEntries(p.map(x=>[x.type,x.value]));return (Number(o.hour)%24)+Number(o.minute)/60;};
 const weekday=at=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).formatToParts(new Date(at)).find(x=>x.type==='weekday')?.value&&new Date(at-3*HOUR).getUTCDay());
