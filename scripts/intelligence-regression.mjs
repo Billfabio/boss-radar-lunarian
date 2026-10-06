@@ -18,4 +18,4 @@ assert.ok(Number.isFinite(testMae)&&Number.isFinite(baselineTestMae),'MAE de tes
 assert.ok(testMae<=baselineTestMae*1.12+1,`Ensemble regrediu no holdout: ${testMae} min vs baseline ${selected.name} ${baselineTestMae} min`);
 const testCal=r.calibrationBySplit?.test;
 if((testCal?.samples||0)>=20){assert.ok((testCal.ece??100)<=25,`Calibração de teste degradada: ECE ${testCal.ece}`);assert.ok((testCal.brier??1)<=.3,`Brier score degradado: ${testCal.brier}`);}
-console.log(JSON.stringify({kind:'test-only-temporal-regression',baselineSelectedOnValidation:selected.name,validationMAE:selected.validation.maeMinutes,ensembleTestMAE:testMae,baselineTestMAE,temporalTest:ensemble.test,testCalibration:testCal},null,2));
+console.log(JSON.stringify({kind:'test-only-temporal-regression',baselineSelectedOnValidation:selected.name,validationMAE:selected.validation.maeMinutes,ensembleTestMAE:testMae,baselineTestMAE:baselineTestMae,temporalTest:ensemble.test,testCalibration:testCal},null,2));
