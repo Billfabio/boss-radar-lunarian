@@ -54,6 +54,7 @@ async function refreshCharacter(input=CHARACTER_NAME,force=false){
 }
 function broadcast(type, data) { for (const res of clients) res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); }
 const intelligence=createIntelligence({state,persist,broadcast});
+await intelligence.bootstrapChecks([...state.checks,...state.groupChecks]);
 async function refresh(force=false) {
   const world=state.settings.world;
   const old=cache.get(world);
@@ -214,7 +215,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
       let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
-      await intelligence.ingestChecks([...state.checks,...state.groupChecks]);const intelligent=intelligence.snapshot(state.settings.world);
+      const intelligent=intelligence.snapshot(state.settings.world);
       return json(res,200,{settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS});
     }
     if(url.pathname==='/api/events') {
