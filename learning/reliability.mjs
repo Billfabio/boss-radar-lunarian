@@ -20,11 +20,18 @@ export function learnFromEvent(event,sources){
   refreshEffectiveWeights(sources);
 }
 export function anomalyFor(observation,events,prediction){
-  const previous=events.filter(e=>e.boss===observation.boss&&e.world===observation.world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>b.estimatedAt-a.estimatedAt)[0];
+  const rows=events.filter(e=>e.boss===observation.boss&&e.world===observation.world&&/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt);
+  const previous=rows.at(-1);
   if(!previous||observation.estimatedAt<=previous.estimatedAt)return null;
   const delta=observation.estimatedAt-previous.estimatedAt;
   if(prediction?.intervalMinMs&&delta<prediction.intervalMinMs*.45)return {kind:'too_soon',message:'Intervalo muito menor que o histórico recente.',deltaMs:delta};
   if(delta<2*3600000)return {kind:'too_soon',message:'Nova aparição apenas algumas horas após o último evento confirmado.',deltaMs:delta};
+  const ints=rows.slice(1).map((e,i)=>e.estimatedAt-rows[i].estimatedAt).filter(x=>x>3600000&&x<180*86400000);
+  if(ints.length>=8){
+    const sorted=[...ints].sort((a,b)=>a-b),median=sorted[Math.floor(sorted.length/2)],dev=ints.map(x=>Math.abs(x-median)).sort((a,b)=>a-b),mad=dev[Math.floor(dev.length/2)]||3600000,robustSigma=Math.max(3600000,mad*1.4826);
+    const lateThreshold=median+Math.max(5*robustSigma,median*1.5);
+    if(delta>lateThreshold)return {kind:'interval_outlier_late',message:'Intervalo muito acima do padrão histórico; pode indicar evento perdido, mudança de regime ou dado incorreto.',deltaMs:delta,medianMs:median,thresholdMs:lateThreshold};
+  }
   return null;
 }
 
