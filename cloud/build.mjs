@@ -2,7 +2,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url),out=new URL('./',import.meta.url);await mkdir(out,{recursive:true});
 let source=await readFile(new URL('server.mjs',root),'utf8');const imports=source.match(/^import .*;\r?$/gm).filter(s=>!s.includes("'node:http'")&&!s.includes("'node:fs/promises'")&&!s.includes("'node:url'")&&!s.includes("'node:path'"));
-source=source.replace(/^import .*;\r?\n/gm,'').replace(/const ROOT = .*;/,"const ROOT = '/app';").replace(/const PORT = .*;/,'const PORT = 4317;').replace(/const ORIGIN = .*;/,'const ORIGIN = context.origin;').replace("if(req.headers.host!==`127.0.0.1:${PORT}`)","if(req.headers.host!==new URL(ORIGIN).host)");
+source=source.replace(/^import .*;\r?\n/gm,'').replace(/const ROOT = .*;/,"const ROOT = '/app';").replace(/const PORT = .*;/,'const PORT = 4317;').replace(/const ORIGIN = .*;/,'const ORIGIN = context.origin;').replace(/const AUTH_REQUIRED=.*;/,'const AUTH_REQUIRED=false;').replace(/const SITE_PASSWORD=.*;/,"const SITE_PASSWORD='';").replace("if(!ALLOWED_HOSTS.has(String(req.headers.host||'')))","if(req.headers.host!==new URL(ORIGIN).host)");
 source=source.replace(/server.listen\([\s\S]*$/,'return {handler:server.handler,poll};');
 source=source.replace(/void poll\(\);/g,'await poll();');
 source=source.replace("if(url.pathname==='/api/events') {","if(url.pathname==='/api/events') { return json(res,200,{polling:true});");
