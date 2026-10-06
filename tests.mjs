@@ -571,7 +571,7 @@ test('quality circuit stays half-open after HTTP recovery until three good evide
 
 test('quarantined waiting evidence cannot shift a confirmed consensus timestamp',()=>{
  const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
- const base=Date.parse('2026-10-06T21:42:00-03:00'),events=[];
+ const base=Date.now()-6*3600000,events=[];
  const good=makeObservation({evidenceId:'good-q',boss:'Q Boss',world:'Lunarian',sourceId:'manual-panel',sourceRef:'boss-radar://panel',collectionMethod:'manual_panel',eventType:'kill',precision:'minute',estimatedAt:base,manual:true,confidence:.98});
  good.quality={score:95,status:'CONFIRMADO',eligibleForLearning:true,traceable:true};
  const waiting=makeObservation({evidenceId:'wait-q',boss:'Q Boss',world:'Lunarian',sourceId:'whatsapp-group',sourceRef:'whatsapp://authorized-group',collectionMethod:'browser_extension',eventType:'kill',precision:'minute',estimatedAt:base+3*3600000,confidence:.9});
@@ -581,9 +581,9 @@ test('quarantined waiting evidence cannot shift a confirmed consensus timestamp'
 });
 
 test('quarantined minute evidence does not count as precise history for exact prediction readiness',()=>{
- const H=3600000,base=Date.parse('2026-01-01T10:00:00-03:00'),events=[];
- for(let i=0;i<10;i++){
-   const at=base+i*72*H;
+ const H=3600000,base=Date.parse('2025-01-01T10:00:00-03:00'),events=[];
+ for(let i=0;i<20;i++){
+   const at=base+i*168*H;
    events.push({id:'qp'+i,boss:'Precision Quarantine',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'confirmed_auto',qualityStatus:'CONFIRMADO',dataQualityScore:90,confidence:.9,evidence:[
      {precision:'day',quality:{status:'CONFIRMADO',eligibleForLearning:true}},
      {precision:'minute',quality:{status:'AGUARDANDO_CONFIRMAÇÃO',eligibleForLearning:false}}
