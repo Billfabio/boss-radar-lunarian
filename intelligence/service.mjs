@@ -23,6 +23,7 @@ export function createIntelligence({state,persist,broadcast}){
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
  intel.version=3;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};intel.ledger ||= [];
+ let qualityBackfilled=0;for(const event of intel.events){for(const evidence of event.evidence||[]){if(!evidence.quality){evidence.quality=assessObservation(evidence,{sources:intel.sources,events:[]});qualityBackfilled++;}}if(event.evidence?.length)recomputeEvent(event,intel.sources);}if(qualityBackfilled)appendLedger(intel.ledger,'quality_backfill',{records:qualityBackfilled,version:3});
  const backtestCache=new Map();
  const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
 
@@ -81,7 +82,7 @@ export function createIntelligence({state,persist,broadcast}){
    if(!data?.bosses?.length)return 0;let added=0;
    for(const boss of data.bosses){
      const o=boss.official;if(!o?.increase||!Number.isFinite(o.observedSince)||!Number.isFinite(o.fetchedAt))continue;
-     const obs=makeObservation({evidenceId:`official|${data.world}|${canonical(boss.name)}|${o.observedSince}|${o.fetchedAt}`,boss:boss.name,world:data.world,sourceId:'rubinot-official',eventType:'kill',precision:'range',startAt:o.observedSince,endAt:o.fetchedAt,confidence:.84,detail:{kills24h:o.day,kills7d:o.week}});
+     const obs=makeObservation({evidenceId:`official|${data.world}|${canonical(boss.name)}|${o.observedSince}|${o.fetchedAt}`,boss:boss.name,world:data.world,sourceId:'rubinot-official',sourceRef:'https://rubinot.com.br/api/killstats',collectionMethod:'official_json',eventType:'kill',precision:'range',startAt:o.observedSince,endAt:o.fetchedAt,sourceObservedAt:o.observedSince,collectedAt:o.fetchedAt,confidence:.84,detail:{kills24h:o.day,kills7d:o.week}});
      const r=addObservation(obs);if(r&&!r.duplicate)added++;
    }
    if(added)await save();return added;
@@ -94,21 +95,21 @@ export function createIntelligence({state,persist,broadcast}){
  }
 
  async function removeCheck(check){
-   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,check.boss,check.world);audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
+   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,check.boss,check.world);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
  }
- async function removeChecks(checks=[]){const affected=new Set();for(const check of checks){const obs=checkObservation(check);if(obs){removeEvidence(intel.events,obs.evidenceId,intel.sources);affected.add(check.world+'|'+check.boss);}}if(checks.length){rebuildSourceReliability(intel.events,intel.sources);for(const value of affected){const [world,...parts]=value.split('|');rebuildBossModel(intel.forecasts,intel.models,parts.join('|'),world);}audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
+ async function removeChecks(checks=[]){const affected=new Set();for(const check of checks){const obs=checkObservation(check);if(obs){removeEvidence(intel.events,obs.evidenceId,intel.sources);affected.add(check.world+'|'+check.boss);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});}}if(checks.length){rebuildSourceReliability(intel.events,intel.sources);for(const value of affected){const [world,...parts]=value.split('|');rebuildBossModel(intel.forecasts,intel.models,parts.join('|'),world);}audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
 
  async function correct({eventId,at,reason='',actor='site-admin'}){
    const event=intel.events.find(e=>e.id===eventId);if(!event)throw new Error('Evento não encontrado');
    const value=Number(at);if(!Number.isFinite(value)||value>Date.now()+60000||value<Date.parse('2020-01-01'))throw new Error('Horário corrigido inválido');
-   const oldAt=event.estimatedAt;
-   const id=`correction|${eventId}|${Date.now()}`;
-   const obs=makeObservation({evidenceId:id,boss:event.boss,world:event.world,sourceId:'manual-panel',eventType:event.eventType,precision:'minute',estimatedAt:value,manual:true,confidence:.995,detail:{correction:true,reason:String(reason||'').slice(0,300),oldAt}});
-   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';
+   const oldAt=event.estimatedAt,id=`correction|${eventId}|${Date.now()}`;
+   const obs=makeObservation({evidenceId:id,boss:event.boss,world:event.world,sourceId:'manual-panel',sourceRef:'boss-radar://manual-correction',collectionMethod:'manual_correction',confirmedBy:actor,eventType:event.eventType,precision:'minute',estimatedAt:value,sourceObservedAt:value,manual:true,confidence:.995,detail:{correction:true,reason:String(reason||'').slice(0,300),oldAt}});
+   obs.quality=assessObservation(obs,{sources:intel.sources,events:intel.events});appendLedger(intel.ledger,'event_correction_requested',{eventId,boss:event.boss,world:event.world,oldAt,newAt:value,reason:String(reason||'').slice(0,300),actor:String(actor).slice(0,80),evidenceId:id});
+   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';event.qualityStatus='CONFIRMADO';
    for(const forecast of intel.forecasts.filter(f=>f.actualEventId===event.id&&f.resolvedAt))recalculateForecastOutcome(forecast,event);
    rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,event.boss,event.world);
    const latest=intel.events.filter(e=>e.boss===event.boss&&e.world===event.world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>b.estimatedAt-a.estimatedAt)[0];if(latest?.id===event.id)upsertForecast(event);
-   const row={id,boss:event.boss,world:event.world,eventId,oldAt,newAt:value,actor:String(actor).slice(0,80),reason:String(reason||'').slice(0,300),at:Date.now()};intel.corrections.unshift(row);audit(intel.audit,'event_corrected',row);await save();broadcast?.('update',{});return row;
+   const row={id,boss:event.boss,world:event.world,eventId,oldAt,newAt:value,actor:String(actor).slice(0,80),reason:String(reason||'').slice(0,300),at:Date.now()};intel.corrections.unshift(row);appendLedger(intel.ledger,'event_corrected',row);audit(intel.audit,'event_corrected',row);await save();broadcast?.('update',{});return row;
  }
 
  function snapshot(world){
