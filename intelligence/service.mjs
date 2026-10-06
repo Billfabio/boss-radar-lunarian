@@ -2,19 +2,32 @@ import {ensureSources,noteSource,sourcePublic} from '../sources/registry.mjs';
 import {publicHistoryObservation,checkObservation,makeObservation,canonical} from '../normalization/observations.mjs';
 import {mergeObservation,recomputeEvent,removeEvidence} from '../deduplication/events.mjs';
 import {refreshEffectiveWeights,learnFromEvent,anomalyFor} from '../learning/reliability.mjs';
-import {buildPredictions,aggregateMetrics,predictBoss} from '../prediction/engine.mjs';
+import {predictBoss} from '../prediction/engine.mjs';
+import {predictAdaptive,buildAdaptivePredictions} from '../prediction/adaptive-engine.mjs';
+import {resolveForecasts,modelPublic} from '../learning/model-performance.mjs';
+import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
 
 const trim=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
 export function createIntelligence({state,persist,broadcast}){
- state.intelligence ||= {version:1,sources:{},events:[],audit:[],corrections:[],metricsHistory:[]};
+ state.intelligence ||= {version:2,sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{}};
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
- intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];
- const save=async()=>{trim(intel.events,50000);trim(intel.audit,3000);trim(intel.corrections,5000);trim(intel.metricsHistory,1095);await persist();};
+ intel.version=2;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};
+ const save=async()=>{trim(intel.events,200000);trim(intel.audit,10000);trim(intel.corrections,10000);trim(intel.metricsHistory,1095);trim(intel.forecasts,200000);await persist();};
 
  function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||''},result.at||Date.now());}
 
+ function upsertForecast(event){
+   if(!event||!/^confirmed_/.test(event.status)||event.eventType==='absence')return null;
+   const prediction=predictAdaptive(intel.events,event.boss,event.world,intel.models);
+   if(prediction.status!=='ready'||prediction.baseEventId!==event.id)return null;
+   let forecast=intel.forecasts.find(f=>!f.resolvedAt&&f.boss===event.boss&&f.world===event.world&&f.baseEventId===event.id);
+   const fields={boss:event.boss,world:event.world,baseEventId:event.id,baseEventAt:event.estimatedAt,windowStart:prediction.windowStart,windowEnd:prediction.windowEnd,likelyAt:prediction.likelyAt,confidence:prediction.confidence,probability:prediction.probability,methods:prediction.methods,trend:prediction.trend,sampleSize:prediction.sampleSize};
+   if(forecast){Object.assign(forecast,fields,{lastUpdatedAt:Date.now(),revisions:(forecast.revisions||1)+1});}
+   else{forecast={id:'forecast-'+event.id+'-'+Date.now(),...fields,createdAt:Date.now(),lastUpdatedAt:Date.now(),revisions:1};intel.forecasts.unshift(forecast);audit(intel.audit,'forecast_created',{boss:event.boss,world:event.world,forecastId:forecast.id,confidence:forecast.confidence,probability:forecast.probability});}
+   return forecast;
+ }
  function addObservation(obs,{allowAnomaly=true}={}){
    if(!obs)return null;
    const prediction=predictBoss(intel.events,obs.boss,obs.world);
@@ -24,6 +37,9 @@ export function createIntelligence({state,persist,broadcast}){
    if(result.event){
      if(obs.anomaly)result.event.anomaly=obs.anomaly;
      learnFromEvent(result.event,intel.sources);
+     const resolved=resolveForecasts(intel.forecasts,result.event,intel.models);
+     for(const row of resolved)audit(intel.audit,'forecast_resolved',{boss:row.boss,world:row.world,forecastId:row.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});
+     upsertForecast(result.event);
      audit(intel.audit,'observation_ingested',{boss:obs.boss,world:obs.world,sourceId:obs.sourceId,eventId:result.event.id,status:result.event.status,confidence:Math.round(result.event.confidence*100),anomaly:obs.anomaly?.kind||null});
    }
    return result;
@@ -73,11 +89,13 @@ export function createIntelligence({state,persist,broadcast}){
 
  function snapshot(world){
    refreshEffectiveWeights(intel.sources);
-   const predictions=buildPredictions(intel.events,world),metrics=aggregateMetrics(predictions);
+   const predictions=buildAdaptivePredictions(intel.events,world,intel.models),performance=forecastMetrics(intel.forecasts,world);
+   const ready=predictions.filter(p=>p.status==='ready');
+   const metrics={bossesModeled:ready.length,averageConfidence:ready.length?Math.round(ready.reduce((n,p)=>n+p.confidence,0)/ready.length*10)/10:null,windowAccuracy:performance.days30.windowAccuracy,maeMinutes:performance.days30.maeMinutes,backtestSamples:performance.days30.predictions,totalResolved:performance.totalResolved};
    const lastMetric=intel.metricsHistory.at(-1);const day=new Date().toISOString().slice(0,10);
-   if(!lastMetric||lastMetric.day!==day)intel.metricsHistory.push({day,...metrics});
-   const events=intel.events.filter(e=>e.world===world).sort((a,b)=>b.estimatedAt-a.estimatedAt).slice(0,1000).map(e=>({id:e.id,boss:e.boss,world:e.world,eventType:e.eventType,startAt:e.startAt,endAt:e.endAt,estimatedAt:e.estimatedAt,confidence:Math.round((e.confidence||0)*100),status:e.status,sourceCount:e.sourceCount,confirmations:e.confirmations,anomaly:e.anomaly||null,corrected:!!e.corrected,evidence:(e.evidence||[]).map(x=>({sourceId:x.sourceId,precision:x.precision,estimatedAt:x.estimatedAt,startAt:x.startAt,endAt:x.endAt,confidence:Math.round(x.confidence*100),manual:x.manual,anomaly:x.anomaly||null,detail:x.detail||null}))}));
-   return {predictions,metrics,events,sources:sourcePublic(intel.sources),audit:publicAudit(intel.audit),corrections:intel.corrections.filter(x=>x.world===world).slice(0,200),metricsHistory:intel.metricsHistory.slice(-90)};
+   if(!lastMetric||lastMetric.day!==day)intel.metricsHistory.push({day,...metrics,days7:performance.days7,days30:performance.days30,days90:performance.days90});
+   const events=intel.events.filter(e=>e.world===world).sort((a,b)=>b.estimatedAt-a.estimatedAt).slice(0,2000).map(e=>({id:e.id,boss:e.boss,world:e.world,eventType:e.eventType,startAt:e.startAt,endAt:e.endAt,estimatedAt:e.estimatedAt,confidence:Math.round((e.confidence||0)*100),status:e.status,sourceCount:e.sourceCount,confirmations:e.confirmations,anomaly:e.anomaly||null,corrected:!!e.corrected,evidence:(e.evidence||[]).map(x=>({sourceId:x.sourceId,precision:x.precision,estimatedAt:x.estimatedAt,startAt:x.startAt,endAt:x.endAt,confidence:Math.round(x.confidence*100),manual:x.manual,anomaly:x.anomaly||null,detail:x.detail||null}))}));
+   return {predictions,metrics,performance,events,forecasts:recentForecasts(intel.forecasts,world),models:modelPublic(intel.models,world),sources:sourcePublic(intel.sources),audit:publicAudit(intel.audit,300),corrections:intel.corrections.filter(x=>x.world===world).slice(0,500),metricsHistory:intel.metricsHistory.slice(-90)};
  }
 
  return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,removeCheck,removeChecks,correct,snapshot,addObservation};
