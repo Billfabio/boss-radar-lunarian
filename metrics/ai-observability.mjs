@@ -18,6 +18,8 @@ export function aiObservability({events=[],forecasts=[],sources=[],world,predict
   confidence_calibration_max_gap:calibration.mce,
   confidence_brier_score:calibration.brier,
   data_quality_score:quality.averageScore,
+  data_quality_traceability_rate:quality.traceabilityRate,
+  data_quality_untraceable:quality.untraceable,
   drift_score:drifts.length?Math.round(drifts.reduce((n,x)=>n+x.score,0)/drifts.length*10)/10:0,
   anomaly_rate:events.filter(e=>e.world===world).length?Math.round(1000*anomalies/events.filter(e=>e.world===world).length)/10:0,
   prediction_volume:forecasts.filter(f=>f.world===world).length,
