@@ -5,12 +5,11 @@
  const levenshtein=(a,b)=>{a=compact(a);b=compact(b);if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;let p=Array.from({length:b.length+1},(_,i)=>i),c=[];for(let i=1;i<=a.length;i++){c[0]=i;for(let j=1;j<=b.length;j++)c[j]=Math.min(c[j-1]+1,p[j]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));[p,c]=[c,p];}return p[b.length];};
  const similarity=(a,b)=>{const aa=compact(a),bb=compact(b),m=Math.max(aa.length,bb.length);return m?1-levenshtein(aa,bb)/m:0;};
  const containsPhrase=(text,phrase)=>{const t=' '+norm(text)+' ',p=' '+norm(phrase)+' ';return !!norm(phrase)&&t.includes(p);};
- const trigrams=s=>{const x=' '+compact(s)+' ',out=new Set();for(let i=0;i<x.length-2;i++)out.add(x.slice(i,i+3));return out;};
  function compileDictionary(dictionary={version:'',entries:[]}){
-  const exact=[],index=new Map(),shapeIndex=new Map();
+  const exact=[],shapeIndex=new Map();
   const addShape=(key,item)=>{if(!key)return;if(!shapeIndex.has(key))shapeIndex.set(key,[]);shapeIndex.get(key).push(item);};
-  for(const entry of dictionary.entries||[]){for(const raw of [entry.name,...(entry.aliases||[])]){const value=norm(raw);if(!value)continue;const item={boss_id:entry.boss_id,name:entry.name,value,alias:raw!==entry.name};exact.push(item);for(const g of trigrams(value)){if(!index.has(g))index.set(g,[]);index.get(g).push(item);}const c=compact(value);for(let d=-3;d<=3;d++){const len=c.length+d;if(len<3)continue;addShape('f:'+c[0]+'|'+len,item);if(c[1])addShape('s:'+c[1]+'|'+len,item);}}}
-  return {version:dictionary.version||'',entries:dictionary.entries||[],exact,index,shapeIndex};
+  for(const entry of dictionary.entries||[]){for(const raw of [entry.name,...(entry.aliases||[])]){const value=norm(raw);if(!value)continue;const item={boss_id:entry.boss_id,name:entry.name,value,alias:raw!==entry.name};exact.push(item);const c=compact(value);for(let d=-3;d<=3;d++){const len=c.length+d;if(len<3)continue;addShape('f:'+c[0]+'|'+len,item);if(c[1])addShape('s:'+c[1]+'|'+len,item);}}}
+  return {version:dictionary.version||'',entries:dictionary.entries||[],exact,shapeIndex};
  }
  function fuzzy(text,compiled){
   const ws=words(text),scored=new Map(),seenPhrases=new Set();
