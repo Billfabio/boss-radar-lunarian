@@ -3,10 +3,11 @@ const H=3600000,MIN=60000,digest=v=>createHash('sha256').update(String(v)).diges
 const pos=new Set(['POSSIBLE_REPORT','CONFIRMATION','CORRECTION']);
 export function evidenceId(e){return 'wae-'+digest(e.messageFingerprint||JSON.stringify([e.group,e.messageTimestamp,e.normalizedText])).slice(0,28);}
 export function candidateScore(evidence){
- const rows=evidence||[],people=new Set(rows.map(x=>x.authorHash).filter(Boolean)).size;
+ const rows=evidence||[],people=new Set(rows.map(x=>x.authorHash).filter(Boolean)).size,groups=new Map();
+ for(const x of rows){const key=x.authorHash||'anonymous';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(x);}
  const match=rows.reduce((m,x)=>Math.max(m,...(x.bossCandidates||[]).map(c=>Number(c.similarity)||0)),0);
- const positives=rows.filter(x=>pos.has(x.contextClassification)).length;
- const confirmations=rows.filter(x=>x.contextClassification==='CONFIRMATION').length;
+ const positives=[...groups.values()].filter(g=>g.some(x=>pos.has(x.contextClassification))).length;
+ const confirmations=[...groups.values()].filter(g=>g.some(x=>x.contextClassification==='CONFIRMATION')).length;
  return Math.max(0,Math.min(99,Math.round(25+match*35+Math.min(20,people*5)+Math.min(15,positives*3)+Math.min(10,confirmations*5))));
 }
 export function mergeEvidence(candidates,evidence,{windowMs=15*MIN}={}){
