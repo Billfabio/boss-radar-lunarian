@@ -21,7 +21,7 @@ function methodsFor(prior){
 }
 function summarize(rows){
  const errors=rows.map(x=>x.errorMinutes).filter(Number.isFinite),hits=rows.filter(x=>x.windowHit).length;
- return {samples:rows.length,preciseSamples:errors.length,maeMinutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,medianErrorMinutes:errors.length?Math.round(q(errors,.5)*10)/10:null,windowAccuracy:rows.length?Math.round(1000*hits/rows.length)/10:null};
+ return {samples:rows.length,predictions:rows.length,preciseSamples:errors.length,maeMinutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,medianErrorMinutes:errors.length?Math.round(q(errors,.5)*10)/10:null,windowAccuracy:rows.length?Math.round(1000*hits/rows.length)/10:null};
 }
 export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}={}){
  const bosses=[...new Set(events.filter(e=>e.world===world&&confirmed(e)).map(e=>e.boss))],all=[],perBoss=[],models={},calibrationHistory=[];
