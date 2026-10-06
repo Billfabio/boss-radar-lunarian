@@ -9,6 +9,6 @@ export function probabilityDistribution(methods=[],centerAt,uncertaintyMs,{slotM
  }
  const total=raw.reduce((n,x)=>n+x.score,0)||1,values=raw.map(x=>({...x,probability:100*x.score/total}));
  let rounded=values.map(x=>({...x,probability:Math.round(x.probability*10)/10})),diff=Math.round((100-rounded.reduce((n,x)=>n+x.probability,0))*10)/10;
- if(rounded.length)rounded[rounded.reduce((best,x,i,a)=>x.probability>a[best].probability?i:best,0)].probability=Math.round((rounded.reduce((n,x)=>n+x.probability,0)+diff>=0?rounded[rounded.reduce((best,x,i,a)=>x.probability>a[best].probability?i:best,0)].probability+diff:0)*10)/10;
+ if(rounded.length){const idx=rounded.reduce((best,x,i,a)=>x.probability>a[best].probability?i:best,0);rounded[idx].probability=Math.max(0,Math.round((rounded[idx].probability+diff)*10)/10);}
  return rounded.map(({score,...x})=>x);
 }
