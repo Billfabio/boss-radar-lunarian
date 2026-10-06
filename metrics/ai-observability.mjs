@@ -1,9 +1,9 @@
 import {qualitySummary} from '../data-quality/engine.mjs';
 import {calibrationReport} from '../learning/calibration.mjs';
 import {detectDrift} from '../learning/drift.mjs';
-export function aiObservability({events=[],forecasts=[],sources=[],world,predictions=[],predictionLatencyMs=null}){
- const quality=qualitySummary(events,world),resolved=forecasts.filter(f=>f.world===world&&f.resolvedAt),errors=resolved.filter(f=>Number.isFinite(f.errorMinutes)).map(f=>f.errorMinutes);
- const calibration=calibrationReport(forecasts,world),bosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],drifts=bosses.map(boss=>({boss,...detectDrift(events,boss,world)})).filter(x=>x.detected);
+export function aiObservability({events=[],forecasts=[],sources=[],world,predictions=[],predictionLatencyMs=null,modelVersion=null}){
+ const quality=qualitySummary(events,world),resolved=forecasts.filter(f=>f.world===world&&(!modelVersion||f.modelVersion===modelVersion)&&f.resolvedAt),errors=resolved.filter(f=>Number.isFinite(f.errorMinutes)).map(f=>f.errorMinutes);
+ const calibration=calibrationReport(forecasts,world,null,{modelVersion}),bosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],drifts=bosses.map(boss=>({boss,...detectDrift(events,boss,world)})).filter(x=>x.detected);
  const anomalies=events.filter(e=>e.world===world&&e.anomaly).length,conflicts=events.filter(e=>e.world===world&&e.qualityStatus==='CONFLITANTE').length;
  const sourceRows=sources.filter(s=>s.active);
  const methodRows=new Map();for(const f of resolved){const ensemble={name:'adaptive_ensemble',hit:f.windowHit,error:f.errorMinutes};for(const m of [ensemble,...(f.methods||[])]){if(!m?.name)continue;const row=methodRows.get(m.name)||{samples:0,hits:0,preciseSamples:0,errorSum:0};row.samples++;if(m.hit??(m.name==='adaptive_ensemble'?f.windowHit:false))row.hits++;const err=m.name==='adaptive_ensemble'?f.errorMinutes:m.actualErrorMinutes;if(Number.isFinite(err)){row.preciseSamples++;row.errorSum+=err;}methodRows.set(m.name,row);}}
@@ -22,7 +22,7 @@ export function aiObservability({events=[],forecasts=[],sources=[],world,predict
   data_quality_untraceable:quality.untraceable,
   drift_score:drifts.length?Math.round(drifts.reduce((n,x)=>n+x.score,0)/drifts.length*10)/10:0,
   anomaly_rate:events.filter(e=>e.world===world).length?Math.round(1000*anomalies/events.filter(e=>e.world===world).length)/10:0,
-  prediction_volume:forecasts.filter(f=>f.world===world).length,
+  prediction_volume:forecasts.filter(f=>f.world===world&&(!modelVersion||f.modelVersion===modelVersion)).length,
   conflicts,
   driftedBosses:drifts,
   insufficientBosses:predictions.filter(p=>p.status==='insufficient').map(p=>p.boss)
