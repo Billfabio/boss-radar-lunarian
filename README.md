@@ -1,25 +1,109 @@
 # Boss Radar · RubinOT
 
-Painel pessoal para acompanhar bosses em Lunarian, registrar Bosstiary, checagens do grupo e lembretes no navegador. Inclui personagens públicos, mapas e integração com WhatsApp Web por extensão.
+Plataforma de monitoramento, histórico e previsão de bosses do RubinOT.
+
+O projeto é desenvolvido com foco em **precisão, automação e independência de hospedagem**. A infraestrutura final pode ser VPS, AWS, Azure, Google Cloud, servidor dedicado, Cloudflare ou outro ambiente compatível com Node.js.
+
+## Motor de inteligência
+
+O Boss Radar mantém um ciclo contínuo:
+
+COLETAR → VALIDAR → NORMALIZAR → DEDUPLICAR → CRUZAR FONTES → CALCULAR CONFIANÇA → ATUALIZAR HISTÓRICO → ANALISAR PADRÕES → PREVER → COMPARAR COM O RESULTADO REAL → APRENDER COM O ERRO → RECALIBRAR.
+
+A inteligência atual inclui:
+
+- histórico por boss e mundo;
+- consolidação de múltiplas evidências no mesmo evento;
+- pesos dinâmicos por fonte;
+- detecção de anomalias;
+- intervalo histórico e intervalo recente;
+- maior peso para mudanças recentes de comportamento;
+- padrões de horário;
+- padrões de dia da semana;
+- ensemble adaptativo por boss;
+- pesos dos métodos aprendidos pelo erro real;
+- livro persistente de previsões;
+- comparação automática previsão × aparição real;
+- erro em minutos;
+- acerto da janela;
+- métricas em 7, 30 e 90 dias;
+- explicabilidade da previsão;
+- correções humanas auditadas.
+
+O sistema evita falsa precisão. Um horário específico só é exibido quando existe histórico temporal suficiente; caso contrário, utiliza uma janela e reduz a confiança.
+
+## Fontes atuais
+
+A arquitetura de fontes é modular. Atualmente existem integrações e/ou evidências provenientes de:
+
+- catálogo público do RubinOT;
+- estatísticas oficiais disponíveis;
+- OT Boss Tracker;
+- checagens manuais;
+- rodadas do grupo;
+- WhatsApp Web por extensão autorizada.
+
+Conectores adicionais ficam desativados até existir endpoint público/autorizado compatível. Dados não são simulados.
+
+## Aprendizado por boss
+
+Cada boss pode aprender pesos diferentes para os métodos:
+
+- intervalo histórico;
+- intervalo recente;
+- horário do dia;
+- dia da semana.
+
+Quando uma nova aparição real é confirmada, a previsão anterior é resolvida e o sistema mede o erro de cada método. Métodos com desempenho melhor ganham influência nas próximas previsões daquele boss.
+
+## Banco de dados
+
+A aplicação atual preserva compatibilidade com o armazenamento existente.
+
+A pasta `database/` contém:
+
+- `schema.sql`: modelo relacional para histórico de grande volume;
+- `repository.mjs`: contrato de persistência independente de provedor.
+
+O esquema separa bosses, mundos, fontes, eventos, evidências, previsões, desempenho dos métodos, correções e auditoria. Isso permite migrar posteriormente para PostgreSQL, MySQL ou outra implementação sem alterar o motor de previsão.
+
+A migração do armazenamento legado deve ser feita de forma controlada para preservar todo o histórico existente.
 
 ## Executar localmente
 
-Com Node.js 24, execute `node server.mjs` e abra http://127.0.0.1:4317/.
+Requer Node.js 24 recomendado.
 
-## Publicar na Cloudflare pelo GitHub
+```bash
+pnpm install --frozen-lockfile
+pnpm start
+```
 
-Conecte este repositório em Workers & Pages. Use a raiz do repositório, comando de compilação `npm run cloud:build` e comando de implantação `npx wrangler deploy`. Configure `SITE_PASSWORD` como segredo com pelo menos 12 caracteres. O painel ficará indisponível enquanto a senha não existir. Consulte [os detalhes de publicação](cloud/PUBLICAR.md).
+Abra:
 
-A primeira publicação precisa ser validada na Cloudflare; não foi possível executar a ferramenta de implantação neste ambiente. Os testes de lógica e de restauração com armazenamento simulado passaram.
+```text
+http://127.0.0.1:4317/
+```
 
-## Extensão
+## Testes
 
-Consulte [as instruções da extensão](edge-extension/LEIA-ME.md). A leitura é restrita ao grupo conectado e depende do WhatsApp Web aberto. Fotos carregadas aparecem na galeria, mas não há reconhecimento visual automático de bosses.
+```bash
+pnpm test
+```
 
-## Dados pessoais
+O CI também valida instalação, testes, build e compatibilidade do pacote hospedado. A validação de Cloudflare existe apenas como teste de regressão; não define a arquitetura principal do projeto.
 
-Este repositório contém somente código e catálogo público. Estado pessoal, senha, fotos e chaves push ficam fora do repositório. O histórico do mundo não representa suas kills; as previsões não determinam o horário de spawn. Mapas do Tibia podem diferir no RubinOT.
+## Extensão do WhatsApp
 
-## Verificar
+Consulte `edge-extension/LEIA-ME.md`.
 
-Execute `npm test`. Para verificar a adaptação hospedada, execute `npm run cloud:build` e `npm run cloud:check`.
+Novos registros aceitos pela extensão são enviados imediatamente para o motor de inteligência, sem depender de atualizar o dashboard.
+
+## Segurança
+
+Credenciais, tokens, senhas, chaves e secrets não devem ser incluídos no repositório.
+
+O estado pessoal, imagens, chaves de push e dados privados permanecem fora do código-fonte.
+
+## Princípio do projeto
+
+**Mais dados → mais conhecimento → padrões melhores → previsões melhores → maior precisão.**
