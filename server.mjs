@@ -76,7 +76,7 @@ async function refresh(force=false) {
     const result=normalizePublic(await response.json(),capturedWorld,catalog);intelligence.sourceAttempt('otbosstracker',{ok:true,records:result.bosses.reduce((n,b)=>n+(b.history?.length||0),0),latencyMs:Date.now()-publicStarted});await intelligence.ingestPublic(result);
     try {
       const officialStarted=Date.now();const official=await fetch(officialURL(capturedWorld),{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json'}});
-      if(!official.ok){intelligence.sourceAttempt('rubinot-official',{ok:false,error:`HTTP ${official.status}`,latencyMs:Date.now()-officialStarted});throw new Error(`HTTP ${official.status}`);}
+      if(!official.ok)throw new Error(`HTTP ${official.status}`);
       state.officialSnapshots ||= {};
       const snapshot=mergeOfficial(result,await official.json(),state.officialSnapshots[capturedWorld]);intelligence.sourceAttempt('rubinot-official',{ok:true,records:result.officialCoverage||0,latencyMs:Date.now()-officialStarted});await intelligence.ingestOfficial(result);
       state.officialSnapshots[capturedWorld]=snapshot;
