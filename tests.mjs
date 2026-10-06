@@ -553,7 +553,7 @@ test('forecast metrics can isolate the active model version from historical vers
 test('intelligence initialization records engine/model version transition in the immutable ledger',()=>{
  const state={intelligence:{version:3,engineVersion:'4.1.0',modelVersion:'adaptive-ensemble-v4.1',sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{},ledger:[]}};
  createIntelligence({state,persist:async()=>{},broadcast:()=>{}});
- const change=state.intelligence.ledger.find(x=>x.type==='engine_version_changed');assert.ok(change);assert.equal(change.payload.fromEngine,'4.1.0');assert.equal(change.payload.toEngine,'4.4.0');assert.equal(verifyLedger(state.intelligence.ledger).valid,true);
+ const change=state.intelligence.ledger.find(x=>x.type==='engine_version_changed');assert.ok(change);assert.equal(change.payload.fromEngine,'4.1.0');assert.equal(change.payload.toEngine,'4.5.0');assert.equal(verifyLedger(state.intelligence.ledger).valid,true);
 });
 
 

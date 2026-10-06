@@ -17,8 +17,8 @@ export function makeObservation(input){
   const processedAt=Number(input.processedAt)||Date.now(),reportedAt=Number(input.reportedAt)||processedAt;
   const sourceObservedAt=Number.isFinite(Number(input.sourceObservedAt))?Number(input.sourceObservedAt):(Number.isFinite(estimatedAt)?estimatedAt:reportedAt),collectedAt=Number(input.collectedAt)||reportedAt;
   const resolvedAt=Number.isFinite(estimatedAt)?estimatedAt:Math.round((startAt+endAt)/2);
-  if(['minute','hour'].includes(precision)&&resolvedAt>processedAt+5*60000)throw new Error('Horário futuro inválido');
-  if(sourceObservedAt>processedAt+5*60000&&['minute','hour'].includes(precision))throw new Error('Horário informado pela fonte está no futuro');
+  if(['minute','hour','range'].includes(precision)&&resolvedAt>processedAt+5*60000)throw new Error('Horário futuro inválido');
+  if(sourceObservedAt>processedAt+5*60000&&['minute','hour','range'].includes(precision))throw new Error('Horário informado pela fonte está no futuro');
   const timestamps={};for(const key of ['detectedAt','publishedAt','confirmedAt']){const value=input[key];if(value!=null&&(!Number.isFinite(value)||value<=0||value>processedAt+5*60000))throw new Error('Timestamp de evidência inválido: '+key);timestamps[key]=value??null;}
   return {evidenceId:String(input.evidenceId),boss:String(input.boss),world:String(input.world),sourceId:String(input.sourceId),sourceRef:String(input.sourceRef||input.detail?.sourceRef||''),collectionMethod:String(input.collectionMethod||input.detail?.collectionMethod||'unknown'),confirmedBy:input.confirmedBy?String(input.confirmedBy).slice(0,120):null,eventType,precision,startAt,endAt,estimatedAt:resolvedAt,sourceObservedAt,collectedAt,reportedAt,processedAt,...timestamps,manual:!!input.manual,confidence:Math.max(.05,Math.min(1,Number(input.confidence)||.5)),detail:input.detail||null};
 }

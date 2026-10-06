@@ -23,7 +23,7 @@ function structuralScore(obs){
  return valid/total;
 }
 function corroborationScore(obs,peerEvidence=[]){
- const peers=peerEvidence.filter(x=>x&&x.evidenceId!==obs.evidenceId&&x.sourceId!==obs.sourceId&&!x.anomaly&&!['DESCARTADO','SUSPEITO'].includes(x.quality?.status));
+ const peers=peerEvidence.filter(x=>x&&x.evidenceId!==obs.evidenceId&&x.sourceId!==obs.sourceId&&!(obs.confirmedBy&&x.confirmedBy===obs.confirmedBy)&&!x.anomaly&&!['DESCARTADO','SUSPEITO'].includes(x.quality?.status));
  if(!peers.length)return .65;
  let best=.1;
  for(const peer of peers){

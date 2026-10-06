@@ -1,3 +1,4 @@
+import {independenceKeys} from './independence.mjs';
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};
 function weightedMedian(rows){
@@ -5,9 +6,9 @@ function weightedMedian(rows){
  for(const x of sorted){c+=x.weight;if(c>=total/2)return x.value;}return sorted.at(-1)?.value??null;
 }
 export function consensusForEvidence(evidence=[],sources={}){
- const usable=evidence.filter(x=>(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status))&&!x.anomaly);
+ const usable=evidence.filter(x=>sources[x.sourceId]?.active!==false&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status))&&!x.anomaly);
  if(!usable.length)return {status:'SUSPEITO',centerAt:null,confidence:0,sourceCount:0,confirmations:0,conflict:false,confirmingSources:[]};
- const contributions=new Map();for(const x of usable){const key=sources[x.sourceId]?.dependencyGroup||x.sourceId,weight=(sources[x.sourceId]?.effectiveWeight??sources[x.sourceId]?.baseWeight??.5)*((x.quality?.score??50)/100)*x.confidence,old=contributions.get(key);if(!old||weight>old.weight)contributions.set(key,{x,value:x.estimatedAt,weight});}
+ const contributions=new Map(),groups=independenceKeys(usable,sources);for(const x of usable){const key=groups.get(x),weight=(sources[x.sourceId]?.effectiveWeight??sources[x.sourceId]?.baseWeight??.5)*((x.quality?.score??50)/100)*x.confidence,old=contributions.get(key);if(!old||weight>old.weight)contributions.set(key,{x,value:x.estimatedAt,weight});}
  const rows=[...contributions.values()],independentSourceCount=rows.length;
  const centerAt=Math.round(weightedMedian(rows)),sourceIds=[...new Set(usable.map(x=>x.sourceId))];
  const precise=usable.filter(x=>['minute','hour'].includes(x.precision)),spread=precise.length>=2?Math.max(...precise.map(x=>x.estimatedAt))-Math.min(...precise.map(x=>x.estimatedAt)):0;

@@ -16,8 +16,9 @@ export function pairedSign(rows){
  let logTerm=-n*Math.log(2),p=0;for(let i=0;i<=n;i++){if(i>=k)p+=Math.exp(logTerm);logTerm+=Math.log(n-i)-Math.log(i+1);}
  return {p:Math.min(1,p),blocks:n};
 }
-export function adjustFDR(experiments,field){
- const sorted=experiments.map((e,i)=>({i,p:e[field]?.p??1})).sort((a,b)=>a.p-b.p);let q=1;for(let j=sorted.length-1;j>=0;j--){q=Math.min(q,sorted[j].p*sorted.length/(j+1));experiments[sorted[j].i][field].q=q;}
+export function adjustFDR(experiments,field,method='BH'){
+ const correction=method==='BY'?experiments.reduce((n,_,i)=>n+1/(i+1),0):1;
+ const sorted=experiments.map((e,i)=>({i,p:e[field]?.p??1})).sort((a,b)=>a.p-b.p);let q=1;for(let j=sorted.length-1;j>=0;j--){q=Math.min(q,sorted[j].p*sorted.length*correction/(j+1));experiments[sorted[j].i][field].q=q;}
  return experiments;
 }
 export function wilson(k,n){if(!n)return null;const z=1.96,p=k/n,d=1+z*z/n,c=(p+z*z/(2*n))/d,h=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/d;return [Math.max(0,c-h),Math.min(1,c+h)];}

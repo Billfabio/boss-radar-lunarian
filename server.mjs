@@ -45,6 +45,7 @@ state.settings.progress=Object.fromEntries(Object.entries(state.settings.progres
 let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
+import {recordConfiguration} from './discovery/history.mjs';
 const sessionToken = randomBytes(32).toString('hex');
 state.pipelineDeadLetters ||= [];
 const heavyQueue=new TaskQueue({concurrency:1,maxPending:8,deadLetters:state.pipelineDeadLetters,onDeadLetter:()=>persist()});
@@ -52,6 +53,7 @@ const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSe
 const storageHealth={lastSuccessAt:0,lastError:'',lastFailureAt:0,recoveryCount:0};
 let persistPromise=null,pendingSnapshot=null;
 function persist() {
+  if(state.intelligence?.discovery)recordConfiguration(state.intelligence.discovery,state.settings.world,state.settings);
   const serializeStart=performance.now();pendingSnapshot=JSON.stringify(state);performanceStats.lastSerializeMs=Math.round((performance.now()-serializeStart)*10)/10;performanceStats.lastPersistBytes=Buffer.byteLength(pendingSnapshot);
   if(persistPromise)return persistPromise;
   persistPromise=(async()=>{const started=performance.now(),hadError=!!storageHealth.lastError;try{while(pendingSnapshot!==null){const snapshot=pendingSnapshot;pendingSnapshot=null;await writeFile(join(DATA,'state.tmp'),snapshot);await rename(join(DATA,'state.tmp'),join(DATA,'state.json'));}performanceStats.lastPersistMs=Math.round((performance.now()-started)*10)/10;performanceStats.maxPersistMs=Math.max(performanceStats.maxPersistMs,performanceStats.lastPersistMs);storageHealth.lastSuccessAt=Date.now();if(hadError)storageHealth.recoveryCount++;storageHealth.lastError='';}catch(e){storageHealth.lastError=String(e?.message||e).slice(0,300);storageHealth.lastFailureAt=Date.now();throw e;}})().finally(()=>{persistPromise=null;});
@@ -135,7 +137,7 @@ async function poll() {
   if (monitoring) return;
   monitoring=true;
   try {
-    const data=await refresh(); lastPoll=Date.now();
+    const data=await refresh(); lastPoll=Date.now();await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world));
     if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}));}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
     if (state.settings.world !== data.world || !state.settings.enabled || lastError) return;
     const now=Date.now();
@@ -145,16 +147,17 @@ async function poll() {
       const sent=state.sent[alert.key] || [];
       const when=alert.start?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(alert.start)):'';
       const message={title:`${prediction.boss_name} • ${prediction.world}`,body:alert.kind==='round'?`Dia favorável segundo o histórico. Sua rodada está marcada para ${when}; prepare a checagem. Não é uma previsão de hora de spawn.`:'Histórico indica um dia favorável para procurar. Horário de spawn desconhecido.',tag:alert.key,url:'/',boss:prediction.boss_name};
+      intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'planned',message});
       for (const sub of [...state.subscriptions]) {
         if (sent.includes(sub.endpoint)) continue;
         try {
           const response=await sendPush(sub,message,vapid);
           if (response.status===404 || response.status===410) { state.subscriptions=state.subscriptions.filter(s=>s.endpoint!==sub.endpoint); continue; }
           if (!response.ok) throw new Error(`Entrega recusada (HTTP ${response.status})`);
-          sent.push(sub.endpoint); state.sent[alert.key]=sent;
+          sent.push(sub.endpoint); state.sent[alert.key]=sent;intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'delivered',message});
           log({boss:prediction.boss_name,world:prediction.world,kind:alert.kind,result:'Enviado ao serviço de push'});
           await persist(); broadcast('alert',message);
-        } catch(e) { log({boss:prediction.boss_name,world:prediction.world,result:e.message}); }
+        } catch(e) { intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'failed'});log({boss:prediction.boss_name,world:prediction.world,result:e.message}); }
       }
     }
     // Preserve daily-cycle deduplication while retaining only the latest 5000 keys.
@@ -258,7 +261,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/intelligence/replay'){if(typeof input.forecastId!=='string'||input.forecastId.length>200)throw new Error('Previsão inválida');return json(res,200,intelligence.replay(input.forecastId));}
       if(url.pathname==='/api/intelligence/discovery/run'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await heavyQueue.enqueue('discovery:'+world,()=>intelligence.discoveryWrite('run',{world})));}
       if(url.pathname==='/api/intelligence/discovery/historical'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await heavyQueue.enqueue('historical:'+world,()=>intelligence.historical({...input,world})));}
-      if(url.pathname.startsWith('/api/intelligence/discovery/')){const operation=url.pathname.split('/').at(-1);if(['candidate','review','sample','context','coverage'].includes(operation)){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await intelligence.discoveryWrite(operation,{...input,world}));}}
+      if(url.pathname.startsWith('/api/intelligence/discovery/')){const operation=url.pathname.split('/').at(-1);if(['candidate','review','sample','context','coverage','collector','collect','advance','dependency','red-team','knowledge','evidence','schedule','automatic','discord','discord-collect'].includes(operation)){const world=WORLDS.includes(input.world)?input.world:state.settings.world;return json(res,200,await heavyQueue.enqueue('discovery-control:'+world,()=>intelligence.discoveryWrite(operation,{...input,world})));}}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {

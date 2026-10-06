@@ -9,7 +9,7 @@ export function learnFromEvent(event,sources){
     if(x.evaluated||evaluatedSources.has(x.sourceId))continue;const s=sources[x.sourceId];if(!s)continue;
     if(x.quality&&!x.quality.eligibleForLearning)continue;
     if(x.manual&&x.detail?.correction){x.evaluated=true;x.referenceEvidence='ground_truth_correction';continue;}
-    const groups=new Map();for(const y of evidence){if(y!==x&&y.sourceId!==x.sourceId&&(sources[y.sourceId]?.dependencyGroup||y.sourceId)!==(s.dependencyGroup||x.sourceId)&&!y.anomaly&&(!y.quality||y.quality.eligibleForLearning)&&!groups.has(sources[y.sourceId]?.dependencyGroup||y.sourceId))groups.set(sources[y.sourceId]?.dependencyGroup||y.sourceId,y);}const peers=[...groups.values()];
+    const groups=new Map();for(const y of evidence){if(y!==x&&y.sourceId!==x.sourceId&&!(x.confirmedBy&&x.confirmedBy===y.confirmedBy)&&(sources[y.sourceId]?.dependencyGroup||y.sourceId)!==(s.dependencyGroup||x.sourceId)&&!y.anomaly&&(!y.quality||y.quality.eligibleForLearning)&&!groups.has(sources[y.sourceId]?.dependencyGroup||y.sourceId))groups.set(sources[y.sourceId]?.dependencyGroup||y.sourceId,y);}const peers=[...groups.values()];
     const reference=correction&&correction!==x?correction.estimatedAt:(peers.length?peers.reduce((n,y)=>n+y.estimatedAt,0)/peers.length:null);
     if(!Number.isFinite(reference))continue;
     const tolerance=x.precision==='day'?18*3600000:x.precision==='range'?6*3600000:x.precision==='hour'?90*60000:30*60000;

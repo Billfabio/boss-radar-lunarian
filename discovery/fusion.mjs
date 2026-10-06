@@ -1,0 +1,17 @@
+import {digest} from '../mlops/feature-store.mjs';
+import {sourceGraph} from './graphs.mjs';
+export function dependencyProposal(d,events,world,asOf){
+ const graph=sourceGraph(events),proposals=[];d.dependencyPolicies||=[];
+ for(const edge of graph.edges.filter(e=>e.status==='DEPENDENCIA_SUSPEITA')){const id='DEP-'+digest({world,from:edge.from,to:edge.to}).slice(0,20);let p=d.dependencyPolicies.find(p=>p.id===id);if(!p){p={id,world,from:edge.from,to:edge.to,status:'SHADOW_MODE',createdAt:asOf,referenceSamples:edge.samples,referenceMatches:edge.matches,productionEligible:false};d.dependencyPolicies.push(p);}const future=d.versions.filter(v=>v.at>p.createdAt&&v.at<=asOf&&v.event.world===world&&v.event.status==='CONFIRMADO');
+  const unique=new Map(future.map(v=>[v.event.id,v.event])),prospective=sourceGraph([...unique.values()]).edges.find(e=>e.from===p.from&&e.to===p.to);p.prospective=prospective||null;proposals.push(p);
+ }return proposals;
+}
+export function activateDependency(d,id,sources,at=Date.now()){
+ const p=d.dependencyPolicies?.find(p=>p.id===id);if(!p||p.status!=='SHADOW_MODE'||!p.prospective||p.prospective.samples<30||p.prospective.copyEvidenceRate<.95||at-p.createdAt<20*86400000)throw new Error('Dependência exige 30 eventos prospectivos em 20 dias com ≥95% de correspondência');
+ const a=sources[p.from],b=sources[p.to];if(!a||!b)throw new Error('Fontes de produção não registradas');const oldGroups=[a.dependencyGroup,b.dependencyGroup].filter(Boolean),group=a.dependencyGroup||b.dependencyGroup||'DEPENDENCY-'+digest([p.from,p.to].sort()).slice(0,20);for(const source of Object.values(sources))if(source===a||source===b||oldGroups.includes(source.dependencyGroup))source.dependencyGroup=group;p.history=[{at:p.createdAt,status:'DESCOBERTA'},{at:p.createdAt,status:'BACKTEST'},{at:p.createdAt,status:'SHADOW_MODE'},{at,status:'QUALITY_GATE',samples:p.prospective.samples},{at,status:'CHALLENGER'},{at,status:'PRODUCAO',action:'conservative_joint_cap'}];p.status='PRODUCAO';p.productionEligible=true;p.activatedAt=at;return {id:p.id,dependencyGroup:group,status:p.status,combinedEvidenceCap:1};
+}
+export function bayesianUpdate(prior,evidence,{confirmed=false,maxLikelihoodRatio=3,maxTotalLikelihoodRatio=20}={}){
+ if(!Number.isFinite(prior)||prior<0||prior>1)throw new Error('Prior probabilístico inválido');if(confirmed)return {probability:1,status:'CONFIRMADO',independentEvidence:0};let odds=Math.max(1e-8,Math.min(1-1e-8,prior))/(1-Math.max(1e-8,Math.min(1-1e-8,prior))),logRatio=0;const groups=new Map();
+ for(const e of evidence){if(!e.validated||!Number.isFinite(e.sensitivity)||!Number.isFinite(e.falsePositiveRate)||e.samples<50||e.falsePositiveRate<=0||e.falsePositiveRate>=1)continue;const key=e.dependencyGroup||e.sourceId;if(!key)continue;const ratio=Math.max(1/maxLikelihoodRatio,Math.min(maxLikelihoodRatio,e.positive?e.sensitivity/e.falsePositiveRate:(1-e.sensitivity)/(1-e.falsePositiveRate)));const existing=groups.get(key);if(existing==null||Math.abs(Math.log(ratio))>Math.abs(Math.log(existing)))groups.set(key,ratio);}
+ for(const ratio of groups.values())logRatio+=Math.log(ratio);logRatio=Math.max(-Math.log(maxTotalLikelihoodRatio),Math.min(Math.log(maxTotalLikelihoodRatio),logRatio));odds*=Math.exp(logRatio);return {probability:Math.min(.99,odds/(1+odds)),status:groups.size?'EVIDENCIA_ATUALIZADA':'EVIDENCIA_INSUFICIENTE',independentEvidence:groups.size,likelihoodRatio:Math.exp(logRatio),hypothesis:'spawn ocorreu na janela explicitamente avaliada; não equivale a spawn futuro'};
+}

@@ -18,7 +18,8 @@ export function bossGraph(events,coverage,experiments,world,asOf){
 export function sourceGraph(events){
  const pairs=new Map(),latencies=new Map();
  for(const e of events){const perSource=new Map();for(const x of e.evidence){const earlier=perSource.get(x.sourceId);if(!earlier||(x.publishedAt??Infinity)<(earlier.publishedAt??Infinity))perSource.set(x.sourceId,x);}
-  const rows=[...perSource.values()];for(const x of rows){if(Number.isFinite(x.detectedAt)&&e.spawn.lower===e.spawn.upper&&x.detectedAt>=e.spawn.upper){const a=latencies.get(x.sourceId)||[];a.push((x.detectedAt-e.spawn.estimate)/60000);latencies.set(x.sourceId,a);}}
+  const rows=[...perSource.values()];const detections=new Map();for(const evidence of e.evidence){if(!Number.isFinite(evidence.detectedAt))continue;const previous=detections.get(evidence.sourceId);if(!previous||evidence.detectedAt<previous.detectedAt)detections.set(evidence.sourceId,evidence);}
+  for(const x of detections.values()){if(Number.isFinite(x.detectedAt)&&e.spawn.lower===e.spawn.upper&&x.detectedAt>=e.spawn.upper){const a=latencies.get(x.sourceId)||[];a.push((x.detectedAt-e.spawn.estimate)/60000);latencies.set(x.sourceId,a);}}
   for(const a of rows)for(const b of rows){if(a.sourceId===b.sourceId||!Number.isFinite(a.publishedAt)||!Number.isFinite(b.publishedAt)||b.publishedAt<=a.publishedAt)continue;
    const key=a.sourceId+'|'+b.sourceId,p=pairs.get(key)||{from:a.sourceId,to:b.sourceId,samples:0,matches:0,lags:[]};p.samples++;if(a.payloadHash&&a.payloadHash===b.payloadHash){p.matches++;p.lags.push((b.publishedAt-a.publishedAt)/60000);}pairs.set(key,p);}
  }
