@@ -364,7 +364,7 @@ test('data quality score rewards traceable precise evidence and quarantines weak
 
 test('consensus accepts nearby precise sources and marks multi-hour disagreement as conflict',()=>{
  const sources=ensureSources({});for(const src of Object.values(sources))src.effectiveWeight=sourceWeight(src);
- const at=Date.now(),mk=(id,source,offset)=>{const x=makeObservation({evidenceId:id,boss:'C',world:'Lunarian',sourceId:source,eventType:'kill',precision:'minute',estimatedAt:at+offset,confidence:.9});x.quality={score:90,status:'CONFIRMADO',eligibleForLearning:true};return x;};
+ const at=Date.now()-5*3600000,mk=(id,source,offset)=>{const observedAt=at+offset;const x=makeObservation({evidenceId:id,boss:'C',world:'Lunarian',sourceId:source,eventType:'kill',precision:'minute',estimatedAt:observedAt,processedAt:observedAt+60000,confidence:.9});x.quality={score:90,status:'CONFIRMADO',eligibleForLearning:true};return x;};
  const good=consensusForEvidence([mk('a','manual-panel',0),mk('b','whatsapp-group',5*60000)],sources);assert.equal(good.conflict,false);assert.ok(good.centerAt>=at&&good.centerAt<=at+5*60000);
  const bad=consensusForEvidence([mk('c','manual-panel',0),mk('d','whatsapp-group',4*3600000)],sources);assert.equal(bad.conflict,true);assert.equal(bad.status,'CONFLITANTE');
 });
