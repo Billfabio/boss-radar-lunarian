@@ -1,5 +1,7 @@
 # Boss Radar · RubinOT
 
+> Auditoria de confiabilidade atual: [RELATORIO-CONFIABILIDADE-V42.md](RELATORIO-CONFIABILIDADE-V42.md).
+
 > Camada de confiabilidade da IA: consulte [RELATORIO-CONFIABILIDADE-IA.md](RELATORIO-CONFIABILIDADE-IA.md).
 
 > Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).\n> Evolução da camada de confiança: consulte [RELATORIO-CONFIABILIDADE-V4.md](RELATORIO-CONFIABILIDADE-V4.md).
