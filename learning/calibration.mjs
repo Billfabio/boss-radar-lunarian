@@ -8,8 +8,8 @@ function buildReport(forecasts,world,boss,raw){
   const hits=x.filter(r=>r.windowHit).length,expected=x.length?x.reduce((n,r)=>n+confidenceValue(r,raw),0)/x.length:null,actual=x.length?100*hits/x.length:null;
   return {range:`${lo}–${hi===101?100:hi}%`,min:lo,max:hi===101?100:hi,samples:x.length,expected:expected==null?null:round(expected),actual:actual==null?null:round(actual),gap:expected==null||actual==null?null:round(actual-expected)};
  });
- const n=rows.length,ece=n?bins.reduce((sum,b)=>sum+(b.samples/n)*Math.abs(b.gap||0),0):null;
- return {samples:n,ece:ece==null?null:round(ece),bins,confidenceField:raw?'raw':'calibrated'};
+ const n=rows.length,ece=n?bins.reduce((sum,b)=>sum+(b.samples/n)*Math.abs(b.gap||0),0):null,mce=n?Math.max(0,...bins.filter(b=>b.samples).map(b=>Math.abs(b.gap||0))):null,brier=n?rows.reduce((sum,r)=>{const p=confidenceValue(r,raw)/100,y=r.windowHit?1:0;return sum+(p-y)*(p-y);},0)/n:null;
+ return {samples:n,ece:ece==null?null:round(ece),mce:mce==null?null:round(mce),brier:brier==null?null:Math.round(brier*10000)/10000,bins,confidenceField:raw?'raw':'calibrated'};
 }
 export function calibrationReport(forecasts,world,boss=null,{raw=false}={}){
  const final=buildReport(forecasts,world,boss,raw);
