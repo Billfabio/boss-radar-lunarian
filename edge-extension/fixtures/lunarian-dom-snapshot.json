@@ -1,0 +1,36 @@
+{
+  "group": "Lunarian",
+  "messages": [
+    {
+      "text": "Ferumbras saiu",
+      "expectedBoss": "Ferumbras",
+      "context": "POSSIBLE_REPORT"
+    },
+    {
+      "text": "Ferumbras?",
+      "expectedBoss": "Ferumbras",
+      "context": "QUESTION"
+    },
+    {
+      "text": "não saiu Ferumbras",
+      "expectedBoss": "Ferumbras",
+      "context": "NEGATION"
+    },
+    {
+      "text": "acho que Ferumbras sai hoje",
+      "expectedBoss": "Ferumbras",
+      "context": "SPECULATION"
+    },
+    {
+      "text": "Ferunbras agora",
+      "expectedBoss": "Ferumbras",
+      "context": "POSSIBLE_REPORT"
+    },
+    {
+      "text": "boa noite pessoal",
+      "expectedBoss": null,
+      "context": "UNKNOWN"
+    }
+  ],
+  "wrongGroup": "Outro Grupo"
+}
