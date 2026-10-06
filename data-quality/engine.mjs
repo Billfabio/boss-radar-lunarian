@@ -73,7 +73,7 @@ export function reassessEventQuality(event,sources,now=Date.now()){
 export function qualitySummary(events,world){
  const evidence=events.filter(e=>!world||e.world===world).flatMap(e=>e.evidence||[]),scores=evidence.map(x=>x.quality?.score).filter(Number.isFinite);
  const statuses={};for(const x of evidence){const s=x.quality?.status||'SEM_AVALIAÇÃO';statuses[s]=(statuses[s]||0)+1;}
- const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;
- return {records:evidence.length,scored:scores.length,averageScore:avg==null?null:Math.round(avg*10)/10,statuses};
+ const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null,traceable=evidence.filter(x=>x.quality?.traceable===true).length,untraceable=evidence.filter(x=>x.quality?.traceable===false).length;
+ return {records:evidence.length,scored:scores.length,traceable,untraceable,traceabilityRate:evidence.length?Math.round(1000*traceable/evidence.length)/10:null,averageScore:avg==null?null:Math.round(avg*10)/10,statuses};
 }
 export {STATUS as DATA_QUALITY_STATUS};
