@@ -1,5 +1,7 @@
 # Boss Radar · RubinOT
 
+> Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).
+
 Plataforma de monitoramento, histórico e previsão de bosses do RubinOT.
 
 O projeto é desenvolvido com foco em **precisão, automação e independência de hospedagem**. A infraestrutura final pode ser VPS, AWS, Azure, Google Cloud, servidor dedicado, Cloudflare ou outro ambiente compatível com Node.js.
