@@ -98,5 +98,6 @@ export function createIntelligence({state,persist,broadcast}){
    return {predictions,metrics,performance,events,forecasts:recentForecasts(intel.forecasts,world),models:modelPublic(intel.models,world),sources:sourcePublic(intel.sources),audit:publicAudit(intel.audit,300),corrections:intel.corrections.filter(x=>x.world===world).slice(0,500),metricsHistory:intel.metricsHistory.slice(-90)};
  }
 
- return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,removeCheck,removeChecks,correct,snapshot,addObservation};
+ async function bootstrapChecks(checks=[]){let added=0;for(const check of checks){const obs=checkObservation(check);if(!obs)continue;const r=addObservation(obs,{allowAnomaly:false});if(r&&!r.duplicate)added++;}if(added){audit(intel.audit,'legacy_bootstrap',{records:added});await save();}return added;}
+ return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,addObservation};
 }
