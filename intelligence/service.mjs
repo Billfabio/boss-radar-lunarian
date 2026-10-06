@@ -8,13 +8,14 @@ import {resolveForecasts,modelPublic} from '../learning/model-performance.mjs';
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
 
-const trim=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
+const trimOldestFirst=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
+const trimNewestFirst=(a,n)=>{if(a.length>n)a.length=n;return a;};
 export function createIntelligence({state,persist,broadcast}){
  state.intelligence ||= {version:2,sources:{},events:[],audit:[],corrections:[],metricsHistory:[],forecasts:[],models:{}};
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
  intel.version=2;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};
- const save=async()=>{trim(intel.events,200000);trim(intel.audit,10000);trim(intel.corrections,10000);trim(intel.metricsHistory,1095);trim(intel.forecasts,200000);await persist();};
+ const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
 
  function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||''},result.at||Date.now());}
 
