@@ -1,0 +1,21 @@
+import {sourceWeight} from '../sources/registry.mjs';
+const clamp=n=>Math.max(0,Math.min(1,n));
+export function refreshEffectiveWeights(sources){for(const s of Object.values(sources))s.effectiveWeight=sourceWeight(s);return sources;}
+export function learnFromEvent(event,sources){
+  if(!event||!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt))return;
+  for(const x of event.evidence||[]){
+    if(x.evaluated)return;const s=sources[x.sourceId];if(!s)continue;
+    const tolerance=x.precision==='day'?18*3600000:x.precision==='range'?6*3600000:x.precision==='hour'?90*60000:30*60000;
+    const error=Math.abs(x.estimatedAt-event.estimatedAt),score=clamp(1-error/Math.max(1,tolerance*2));
+    s.alpha+=score;s.beta+=1-score;x.evaluated=true;x.errorMs=error;x.agreementScore=score;
+  }
+  refreshEffectiveWeights(sources);
+}
+export function anomalyFor(observation,events,prediction){
+  const previous=events.filter(e=>e.boss===observation.boss&&e.world===observation.world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>b.estimatedAt-a.estimatedAt)[0];
+  if(!previous||observation.estimatedAt<=previous.estimatedAt)return null;
+  const delta=observation.estimatedAt-previous.estimatedAt;
+  if(prediction?.intervalMinMs&&delta<prediction.intervalMinMs*.45)return {kind:'too_soon',message:'Intervalo muito menor que o histórico recente.',deltaMs:delta};
+  if(delta<2*3600000)return {kind:'too_soon',message:'Nova aparição apenas algumas horas após o último evento confirmado.',deltaMs:delta};
+  return null;
+}
