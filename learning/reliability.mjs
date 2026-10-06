@@ -15,7 +15,7 @@ export function learnFromEvent(event,sources){
     const error=Math.abs(x.estimatedAt-reference),score=clamp(1-error/Math.max(1,tolerance*2));
     s.alpha+=score;s.beta+=1-score;x.evaluated=true;x.errorMs=error;x.agreementScore=score;x.referenceEvidence=correction&&correction!==x?'manual_correction':'independent_sources';
     const delayMs=Number.isFinite(x.collectedAt)&&Number.isFinite(x.sourceObservedAt)?Math.max(0,x.collectedAt-x.sourceObservedAt):null;
-    noteEvidenceOutcome(sources,x.sourceId,{correct:score>=.65,errorMs:error,delayMs,consistency:score,precision:x.precision});
+    noteEvidenceOutcome(sources,x.sourceId,{correct:score>=.65,errorMs:error,delayMs,consistency:score,precision:x.precision,at:x.processedAt||event.updatedAt||event.estimatedAt||Date.now()});
   }
   refreshEffectiveWeights(sources);
 }
@@ -29,7 +29,7 @@ export function anomalyFor(observation,events,prediction){
 }
 
 export function rebuildSourceReliability(events,sources){
-  for(const s of Object.values(sources)){s.alpha=8*(s.baseWeight??.5);s.beta=8*(1-(s.baseWeight??.5));s.evaluatedRecords=0;s.correctRecords=0;s.incorrectRecords=0;s.totalErrorMs=0;s.preciseEvaluatedRecords=0;s.preciseCorrectRecords=0;s.preciseTotalErrorMs=0;s.totalDelayMs=0;s.delaySamples=0;s.consistencySum=0;s.consistencySamples=0;}
+  for(const s of Object.values(sources)){s.alpha=8*(s.baseWeight??.5);s.beta=8*(1-(s.baseWeight??.5));s.evaluatedRecords=0;s.correctRecords=0;s.incorrectRecords=0;s.totalErrorMs=0;s.preciseEvaluatedRecords=0;s.preciseCorrectRecords=0;s.preciseTotalErrorMs=0;s.totalDelayMs=0;s.recentOutcomes=[];s.delaySamples=0;s.consistencySum=0;s.consistencySamples=0;}
   for(const event of events){for(const x of event.evidence||[]){delete x.evaluated;delete x.errorMs;delete x.agreementScore;delete x.referenceEvidence;}}
   const ordered=[...events].filter(e=>/^confirmed_/.test(e.status)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
   for(const event of ordered)learnFromEvent(event,sources);
