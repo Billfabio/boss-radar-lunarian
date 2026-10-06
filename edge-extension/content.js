@@ -1,10 +1,10 @@
 (()=>{
  const GROUP='Lunarian',adapter=globalThis.BossWhatsAppAdapter,core=globalThis.BossCollectorCore,VERSION=chrome.runtime.getManifest().version;
  let running=false,observer=null,observedRoot=null,debounceTimer=null,heartbeatTimer=null,compiled=null,compiledVersion='',currentStatus='DISCONNECTED',lastDiagnostics=null;
- let delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,observerEvents:0};
+ let delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,domAdapterErrors:0,observerEvents:0};
  const send=data=>chrome.runtime.sendMessage(data),hash=async text=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(text))))].map(x=>x.toString(16).padStart(2,'0')).join('');
  const add=(key,n=1)=>{delta[key]=(delta[key]||0)+n;};
- async function emitHeartbeat(status=currentStatus,diagnostics=lastDiagnostics){const d=delta;delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,observerEvents:0};try{await send({type:'heartbeat',status,diagnostics,metricsDelta:d});}catch{}}
+ async function emitHeartbeat(status=currentStatus,diagnostics=lastDiagnostics){const d=delta;delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,domAdapterErrors:0,observerEvents:0};try{await send({type:'heartbeat',status,diagnostics,metricsDelta:d});}catch{}}
  function scheduleHeartbeat(){clearTimeout(heartbeatTimer);heartbeatTimer=setTimeout(async()=>{await emitHeartbeat();scheduleHeartbeat();},15000);}
  function hasMessageNode(node){return node?.nodeType===1&&(node.matches?.('[data-pre-plain-text],[data-id]')||node.querySelector?.('[data-pre-plain-text]'));}
  function attachObserver(){const root=document.querySelector('#main');if(root===observedRoot&&observer)return;if(observer)observer.disconnect();observer=null;observedRoot=root;if(!root)return;observer=new MutationObserver(ms=>{if(!ms.some(m=>[...m.addedNodes].some(hasMessageNode)))return;add('observerEvents');clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>void scan(false),220);});observer.observe(root,{childList:true,subtree:true});}
@@ -25,7 +25,7 @@
   try{
    const cfg=await send({type:'config'});if(cfg.paused){await status('PAUSED','Collector pausado.',null);return;}if(!cfg.dictionary?.entries?.length){await status('DEGRADED','Dicionário de bosses indisponível; coleta aguardando sincronização.',null);return;}
    if(compiledVersion!==cfg.dictionary.version){compiled=core.compileDictionary(cfg.dictionary);compiledVersion=cfg.dictionary.version;}
-   const health=adapter.health(document);attachObserver();if(!health.app){await status('WHATSAPP_NOT_FOUND','WhatsApp Web não foi localizado.',{domOk:false,visible:0,relevant:0});return;}if(!health.ok){await status('WHATSAPP_WEB_STRUCTURE_CHANGED','Estrutura esperada do WhatsApp Web não foi encontrada.',{domOk:false,visible:health.messages,relevant:0});return;}
+   const health=adapter.health(document);attachObserver();if(!health.app){await status('WHATSAPP_NOT_FOUND','WhatsApp Web não foi localizado.',{domOk:false,visible:0,relevant:0});return;}if(!health.ok){add('domAdapterErrors');await status('WHATSAPP_WEB_STRUCTURE_CHANGED','Estrutura esperada do WhatsApp Web não foi encontrada.',{domOk:false,visible:health.messages,relevant:0});return;}
    const detected=adapter.title(document,GROUP);if(core.norm(detected)!==core.norm(GROUP)){await status('LUNARIAN_NOT_FOUND','Abra o grupo Lunarian para ativar o Collector.',{configured:GROUP,detected,domOk:true,visible:health.messages,relevant:0});return;}
    const identity=adapter.groupIdentity(document,GROUP),gKey=await groupKey(identity,cfg.reporterSalt||'local'),nodes=adapter.messageNodes(document),{localCheckpoint}=await chrome.storage.local.get('localCheckpoint');
    if(!localCheckpoint){const visible=await baseline(nodes,cfg);await status('CONNECTED','Baseline criado. Somente mensagens novas serão tratadas como evidência.',{configured:GROUP,detected,domOk:true,visible,relevant:0});return;}
@@ -35,7 +35,7 @@
    for(const m of newer){add('messagesSeen');const row=await analyze(m,cfg,gKey);if(row)evidence.push(row);}
    if(evidence.length){const r=await send({type:'evidence-batch',group:GROUP,evidence});if(r?.error)throw new Error(r.error);}
    const last=extracted.at(-1);if(last)await chrome.storage.local.set({localCheckpoint:{key:last._key,at:last.at||Date.now(),setAt:Date.now()}});
-   const diagnostics={configured:GROUP,detected,domOk:true,visible:extracted.length,relevant:evidence.length,gapDetected:!!gap,manual:!!manual};
+   const diagnostics={configured:GROUP,detected,domOk:true,visible:extracted.length,relevant:evidence.length,gapDetected:!!gap,gapFrom:gap?Number(localCheckpoint.at)||null:null,gapTo:gap?Number(oldest?.at)||Date.now():null,manual:!!manual};
    await status(gap?'DEGRADED':'CONNECTED',gap?'Lacuna de coleta detectada; mensagens atuais continuam sendo capturadas.':'Lunarian Collector ativo.',diagnostics);
   }catch(e){add('errors');await status('ERROR',String(e.message||e).slice(0,240),lastDiagnostics);}finally{running=false;}
  }
