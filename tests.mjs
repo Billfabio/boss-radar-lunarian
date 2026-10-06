@@ -19,25 +19,20 @@ test('WhatsApp accepts explicit results, preserves unknown reports and rejects p
  const r=extractObservations({...base,text:'Não estavam:\nDharalion\nEstavam:\nHirintror'},names);assert.equal(r.rows.length,2);assert.equal(r.rows[0].result,'vazio');assert.equal(r.rows[1].result,'encontrado');
  for(const text of ['Dharalion','Vou checar Dharalion','Dharalion estava?','Ontem achei Dharalion','[Foto sem nome de boss]']){const p=extractObservations({...base,text},names);assert.equal(p.rows.length,0);assert.equal(p.pending,true);}
 });
-test('WhatsApp pairing restricts origin and group; sync is idempotent, atomic and never advances across a gap',async()=>{
+test('WhatsApp pairing restricts origin and Lunarian; legacy sync remains review-only and idempotent',async()=>{
  const state={groupChecks:[],settings:{progress:{Dharalion:{kills:4}}}},names=()=>['Dharalion'];let saved=0;
- const imageFiles=new Map();const sync=createWhatsAppSync({state,persist:async()=>saved++,broadcast:()=>{},names,worlds:['Lunarian'],readBody:async req=>req.input,saveImage:async(id,image)=>imageFiles.set(id,image.bytes)});
- const code=(await sync.control('/api/whatsapp/pair-code',{})).code;
- const origin='chrome-extension://'+'a'.repeat(32);
- const call=async(path,input,key,from=origin)=>{let result,code;const req={method:'POST',headers:{origin:from,'x-radar-key':key},input};const res={writeHead(n){code=n;},end(s){result=JSON.parse(s);}};await sync.handle(req,res,new URL('http://127.0.0.1:4317'+path));return {code,...result};};
- assert.equal((await call('/extension/pair',{code,group:'Bosses',world:'Lunarian'},null,'https://example.com')).code,403);
- const paired=await call('/extension/pair',{code,group:'Bosses',world:'Lunarian'});assert.equal(paired.code,200);
- const key=paired.key,id='b'.repeat(64),at=Date.parse('2026-10-04T09:12:00-03:00'),message={id,text:'Dharalion não estava',date:'2026-10-04',time:'09:12'};
- assert.equal((await call('/extension/sync',{group:'Outro grupo',messages:[message]},key)).code,400);
- const input={group:'Bosses',messages:[message],checkpoint:{id,at},coverage:'complete'};
- assert.equal((await call('/extension/sync',input,key)).added,1);assert.equal((await call('/extension/sync',input,key)).added,0);assert.equal(state.settings.progress.Dharalion.kills,4);assert.equal(state.groupChecks[0].text,undefined);assert.equal(sync.publicState().connection,undefined);
- assert.equal(sync.publicState().identified[0].boss,'Dharalion');assert.equal(sync.publicState().identified[0].empty,1);
- const picture={group:'Bosses',messageId:id,data:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEn0AAAAASUVORK5CYII='};assert.equal((await call('/extension/image',picture,key)).code,200);await call('/extension/image',picture,key);assert.equal(imageFiles.size,1);assert.equal(sync.publicState().images[0].bosses[0],'Dharalion');assert.equal(sync.publicState().images[0].data,undefined);
- await call('/extension/sync',{group:'Bosses',messages:[{...message,id:'e'.repeat(64),text:'Dharalion'}]},key);assert.equal(sync.publicState().identified[0].pending,1);
- const count=state.groupChecks.length;const bad={...message,id:'c'.repeat(64),time:'10:12'};
- assert.equal((await call('/extension/sync',{...input,messages:[bad],checkpoint:{id:'bad',at}},key)).code,400);assert.equal(state.groupChecks.length,count);
- await call('/extension/sync',{...input,messages:[],coverage:'gap',checkpoint:{id:'d'.repeat(64),at:at+3600000}},key);assert.equal(state.whatsapp.checkpoint.id,id);assert.match(state.whatsapp.status,/incompleta/);
- await sync.control('/api/whatsapp/disconnect',{});assert.equal((await call('/extension/config',{group:'Bosses'},key)).code,400);assert.ok(saved>0);
+ const sync=createWhatsAppSync({state,persist:async()=>saved++,broadcast:()=>{},names,worlds:['Lunarian'],readBody:async req=>req.input});
+ const code=(await sync.control('/api/whatsapp/pair-code',{})).code,origin='chrome-extension://'+'a'.repeat(32);
+ const call=async(path,input,key,from=origin)=>{let result,status;const req={method:'POST',headers:{origin:from,'x-radar-key':key},input};const res={writeHead(n){status=n;},end(v){result=JSON.parse(v);}};await sync.handle(req,res,new URL('http://127.0.0.1:4317'+path));return {status,...result};};
+ assert.equal((await call('/extension/pair',{code,group:'Lunarian',world:'Lunarian'},null,'https://example.com')).status,403);
+ assert.equal((await call('/extension/pair',{code,group:'Bosses',world:'Lunarian'})).status,400);
+ const paired=await call('/extension/pair',{code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.3.0'});assert.equal(paired.status,200);
+ const key=paired.key,id='b'.repeat(64),message={id,text:'Dharalion não estava',date:'2026-10-04',time:'09:12'};
+ assert.equal((await call('/extension/sync',{group:'Outro grupo',messages:[message]},key)).status,400);
+ const first=await call('/extension/sync',{group:'Lunarian',messages:[message],coverage:'complete'},key);assert.equal(first.added,0);assert.equal(first.pending,1);assert.equal(state.groupChecks.length,0);
+ const second=await call('/extension/sync',{group:'Lunarian',messages:[message],coverage:'complete'},key);assert.equal(second.pending,0);assert.equal(state.groupChecks.length,0);assert.equal(state.settings.progress.Dharalion.kills,4);
+ assert.equal(sync.publicState().pending.length,1);assert.match(sync.publicState().pending[0].reason,/Extensão antiga/);
+ await sync.control('/api/whatsapp/disconnect',{});assert.equal((await call('/extension/config',{group:'Lunarian'},key)).status,400);assert.ok(saved>0);
 });
 test('group messages preserve explicit absence, presence, aliases and timestamp precision',()=>{
  const names=['Dharalion','Hirintror','Midnight Panther'];const rows=parseGroupText('Não estavam:\nDharalion\nHirintror\nEstavam:\npantera',names,{date:'2026-10-05'});
@@ -236,15 +231,14 @@ test('rolling forecast metrics report 7 30 and 90 day windows',()=>{
 });
 
 
-test('WhatsApp streams newly accepted records to intelligence callback immediately',async()=>{
+test('legacy WhatsApp sync never streams records to intelligence without manual confirmation',async()=>{
  const state={groupChecks:[],settings:{progress:{}}};let streamed=[];
  const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},names:()=>['Dharalion'],worlds:['Lunarian'],readBody:async req=>req.input,onRecords:async rows=>{streamed.push(...rows);}});
  const code=(await sync.control('/api/whatsapp/pair-code',{})).code,origin='chrome-extension://'+'a'.repeat(32);
  const call=async(path,input,key)=>{let data,status;const req={method:'POST',headers:{origin,'x-radar-key':key},input};const res={writeHead(n){status=n;},end(v){data=JSON.parse(v);}};await sync.handle(req,res,new URL('http://127.0.0.1:4317'+path));return {status,...data};};
- const paired=await call('/extension/pair',{code,group:'Bosses',world:'Lunarian'});
- const id='f'.repeat(64),at=Date.parse('2026-10-05T10:10:00-03:00');
- await call('/extension/sync',{group:'Bosses',messages:[{id,text:'Dharalion encontrado',date:'2026-10-05',time:'10:10'}],checkpoint:{id,at},coverage:'complete'},paired.key);
- assert.equal(streamed.length,1);assert.equal(streamed[0].boss,'Dharalion');assert.equal(streamed[0].origin,'whatsapp');
+ const paired=await call('/extension/pair',{code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.3.0'});
+ const id='f'.repeat(64);await call('/extension/sync',{group:'Lunarian',messages:[{id,text:'Dharalion encontrado',date:'2026-10-05',time:'10:10'}],coverage:'complete'},paired.key);
+ assert.equal(streamed.length,0);assert.equal(state.groupChecks.length,0);assert.equal(state.whatsapp.pending.length,1);
 });
 
 
