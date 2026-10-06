@@ -32,6 +32,8 @@ jobs:
         run: pnpm run test:intelligence-regression
       - name: Intelligence synthetic load benchmark
         run: pnpm run test:intelligence-load
+      - name: Active-runtime fault injection
+        run: pnpm run test:failure-injection
       - name: Build Cloudflare package
         run: pnpm run cloud:build
       - name: Smoke test Cloudflare package
