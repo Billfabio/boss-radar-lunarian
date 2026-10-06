@@ -112,5 +112,11 @@ export function createIntelligence({state,persist,broadcast}){
    const forecasts=intel.forecasts.filter(x=>x.world===world),events=intel.events.filter(x=>x.world===world),lastForecast=forecasts.reduce((m,x)=>Math.max(m,x.lastUpdatedAt||x.createdAt||0),0),lastEvent=events.reduce((m,x)=>Math.max(m,x.updatedAt||x.estimatedAt||0),0);
    return {sources:sourcePublic(intel.sources),lastPredictionAt:lastForecast,lastEventAt:lastEvent,eventCount:events.length,forecastCount:forecasts.length,models:Object.keys(intel.models).filter(k=>k.startsWith(world+'|')).length};
  }
- return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,healthState,addObservation};
+ function simulate(boss,world){
+   const prediction=predictAdaptive(intel.events,boss,world,intel.models),events=intel.events.filter(e=>e.boss===boss&&e.world===world&&/^confirmed_/.test(e.status)&&!e.anomaly&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt);
+   const recent=events.slice(-100),intervals=[];for(let i=1;i<recent.length;i++)intervals.push({from:recent[i-1].estimatedAt,to:recent[i].estimatedAt,ms:recent[i].estimatedAt-recent[i-1].estimatedAt});
+   const model=modelPublic(intel.models,world).find(x=>x.boss===boss)||null;
+   return {boss,world,prediction,events:recent.map(e=>({id:e.id,estimatedAt:e.estimatedAt,status:e.status,confidence:Math.round((e.confidence||0)*100),sourceCount:e.sourceCount,confirmations:e.confirmations})),intervals,model};
+ }
+ return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation};
 }
