@@ -4,7 +4,7 @@ export function refreshEffectiveWeights(sources){for(const s of Object.values(so
 export function learnFromEvent(event,sources){
   if(!event||!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt))return;
   for(const x of event.evidence||[]){
-    if(x.evaluated)return;const s=sources[x.sourceId];if(!s)continue;
+    if(x.evaluated)continue;const s=sources[x.sourceId];if(!s)continue;
     const tolerance=x.precision==='day'?18*3600000:x.precision==='range'?6*3600000:x.precision==='hour'?90*60000:30*60000;
     const error=Math.abs(x.estimatedAt-event.estimatedAt),score=clamp(1-error/Math.max(1,tolerance*2));
     s.alpha+=score;s.beta+=1-score;x.evaluated=true;x.errorMs=error;x.agreementScore=score;
