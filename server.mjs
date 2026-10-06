@@ -191,7 +191,13 @@ function validSettings(input) {
   }
   return result;
 }
-const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),investigate:async()=>{try{await refresh(true);}catch{}},saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
+async function notifyCommunityCandidate(candidate){
+  const message={title:'🔥 Lunarian detectou possível '+candidate.boss,body:(candidate.participants||0)+' participantes · '+(candidate.messages||0)+' mensagens · revisar antes de confirmar.',tag:'wa-candidate-'+candidate.id,url:'/',boss:candidate.boss};
+  broadcast('alert',message);
+  for(const sub of [...state.subscriptions]){try{const response=await sendPush(sub,message,vapid);if(response.status===404||response.status===410){state.subscriptions=state.subscriptions.filter(s=>s.endpoint!==sub.endpoint);continue;}if(!response.ok)throw new Error('HTTP '+response.status);}catch(e){log({boss:candidate.boss,world:candidate.world,kind:'community-candidate',result:e.message});}}
+  await persist();
+}
+const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),onCandidate:notifyCommunityCandidate,investigate:async candidate=>{try{await refresh(true);}catch{}const snap=intelligence.snapshot(candidate.world),near=(snap.events||[]).filter(e=>e.boss===candidate.boss&&Number.isFinite(e.estimatedAt)&&Math.abs(e.estimatedAt-candidate.estimatedAt)<=2*3600000);return {compatibleEvents:near.length,independentSources:near.reduce((m,e)=>Math.max(m,Number(e.sourceCount)||0),0),checkedAt:Date.now()};},saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
