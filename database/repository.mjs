@@ -8,12 +8,15 @@ export class IntelligenceRepository {
  async upsertMethodPerformance(_model){throw new Error('Not implemented');}
  async appendCorrection(_correction){throw new Error('Not implemented');}
  async appendAudit(_entry){throw new Error('Not implemented');}
+ async appendLedger(_entry){throw new Error('Not implemented');}
+ async upsertModelGovernance(_entry){throw new Error('Not implemented');}
+ async upsertIntelligenceAlert(_entry){throw new Error('Not implemented');}
  async listEvents(_query={}){throw new Error('Not implemented');}
  async listForecasts(_query={}){throw new Error('Not implemented');}
  async loadLearningState(_world){throw new Error('Not implemented');}
 }
 export function assertRepository(repo){
- const required=['appendEvidence','upsertEvent','upsertForecast','resolveForecast','upsertSource','upsertMethodPerformance','appendCorrection','appendAudit','listEvents','listForecasts','loadLearningState'];
+ const required=['appendEvidence','upsertEvent','upsertForecast','resolveForecast','upsertSource','upsertMethodPerformance','appendCorrection','appendAudit','appendLedger','upsertModelGovernance','upsertIntelligenceAlert','listEvents','listForecasts','loadLearningState'];
  for(const name of required)if(typeof repo?.[name]!=='function')throw new Error('Repositório de inteligência inválido: '+name);
  return repo;
 }
