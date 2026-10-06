@@ -6,6 +6,7 @@ import {predictBoss} from '../prediction/engine.mjs';
 import {predictAdaptive,buildAdaptivePredictions} from '../prediction/adaptive-engine.mjs';
 import {resolveForecasts,modelPublic} from '../learning/model-performance.mjs';
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
+import {runHistoricalBacktest} from '../backtest/history.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
 
 const trimOldestFirst=(a,n)=>{if(a.length>n)a.splice(0,a.length-n);return a;};
@@ -15,6 +16,7 @@ export function createIntelligence({state,persist,broadcast}){
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
  intel.version=2;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};
+ const backtestCache=new Map();
  const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
 
  function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||''},result.at||Date.now());}
@@ -100,5 +102,15 @@ export function createIntelligence({state,persist,broadcast}){
  }
 
  async function bootstrapChecks(checks=[]){let added=0;for(const check of checks){const obs=checkObservation(check);if(!obs)continue;const r=addObservation(obs,{allowAnomaly:false});if(r&&!r.duplicate)added++;}if(added){audit(intel.audit,'legacy_bootstrap',{records:added});await save();}return added;}
- return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,addObservation};
+ function backtest(world){
+   const rows=intel.events.filter(e=>e.world===world),last=rows.reduce((m,e)=>Math.max(m,e.updatedAt||e.estimatedAt||0),0),key=world+'|'+rows.length+'|'+last;
+   if(backtestCache.has(key))return backtestCache.get(key);
+   const result=runHistoricalBacktest(intel.events,world);backtestCache.clear();backtestCache.set(key,result);audit(intel.audit,'backtest_completed',{world,eventsEvaluated:result.eventsEvaluated,predictionsEvaluated:result.predictionsEvaluated});
+   return result;
+ }
+ function healthState(world){
+   const forecasts=intel.forecasts.filter(x=>x.world===world),events=intel.events.filter(x=>x.world===world),lastForecast=forecasts.reduce((m,x)=>Math.max(m,x.lastUpdatedAt||x.createdAt||0),0),lastEvent=events.reduce((m,x)=>Math.max(m,x.updatedAt||x.estimatedAt||0),0);
+   return {sources:sourcePublic(intel.sources),lastPredictionAt:lastForecast,lastEventAt:lastEvent,eventCount:events.length,forecastCount:forecasts.length,models:Object.keys(intel.models).filter(k=>k.startsWith(world+'|')).length};
+ }
+ return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,healthState,addObservation};
 }
