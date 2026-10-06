@@ -48,11 +48,12 @@ catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFi
 const sessionToken = randomBytes(32).toString('hex');
 const heavyQueue=new TaskQueue({concurrency:1,maxPending:8});
 const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSerializeMs:0,lastStateMs:0,lastRefreshMs:0};
+const storageHealth={lastSuccessAt:0,lastError:'',lastFailureAt:0,recoveryCount:0};
 let persistPromise=null,pendingSnapshot=null;
 function persist() {
   const serializeStart=performance.now();pendingSnapshot=JSON.stringify(state);performanceStats.lastSerializeMs=Math.round((performance.now()-serializeStart)*10)/10;performanceStats.lastPersistBytes=Buffer.byteLength(pendingSnapshot);
   if(persistPromise)return persistPromise;
-  persistPromise=(async()=>{const started=performance.now();while(pendingSnapshot!==null){const snapshot=pendingSnapshot;pendingSnapshot=null;await writeFile(join(DATA,'state.tmp'),snapshot);await rename(join(DATA,'state.tmp'),join(DATA,'state.json'));}performanceStats.lastPersistMs=Math.round((performance.now()-started)*10)/10;performanceStats.maxPersistMs=Math.max(performanceStats.maxPersistMs,performanceStats.lastPersistMs);})().finally(()=>{persistPromise=null;});
+  persistPromise=(async()=>{const started=performance.now(),hadError=!!storageHealth.lastError;try{while(pendingSnapshot!==null){const snapshot=pendingSnapshot;pendingSnapshot=null;await writeFile(join(DATA,'state.tmp'),snapshot);await rename(join(DATA,'state.tmp'),join(DATA,'state.json'));}performanceStats.lastPersistMs=Math.round((performance.now()-started)*10)/10;performanceStats.maxPersistMs=Math.max(performanceStats.maxPersistMs,performanceStats.lastPersistMs);storageHealth.lastSuccessAt=Date.now();if(hadError)storageHealth.recoveryCount++;storageHealth.lastError='';}catch(e){storageHealth.lastError=String(e?.message||e).slice(0,300);storageHealth.lastFailureAt=Date.now();throw e;}})().finally(()=>{persistPromise=null;});
   return persistPromise;
 }
 const cache=new Map();
@@ -256,7 +257,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/boss-maps'){const name=url.searchParams.get('name'),boss=catalog.find(b=>b.name===name)||bosstiary.find(b=>b.name===name);if(!boss)throw new Error('Boss desconhecido');let result=mapCache.get(name);if(!result||Date.now()-result.at>3600000){result={...await fetchBossMaps(name,boss.locations||[]),at:Date.now()};mapCache.set(name,result);}return json(res,200,result);}
     if(url.pathname==='/api/group-image'){const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))throw new Error('Imagem inválida');const image=state.whatsapp.images.find(i=>i.id===id);if(!image)return json(res,404,{error:'Imagem não encontrada'});const bytes=await readFile(join(DATA,'group-images',id));res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(bytes);return;}
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
-    if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
+    if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',storage:storageHealth,errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
     if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
     if(url.pathname==='/api/characters')return json(res,200,{names:state.characters});
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
