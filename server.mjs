@@ -16,6 +16,8 @@ import { createIntelligence } from './intelligence/service.mjs';
 import { TaskQueue } from './runtime/task-queue.mjs';
 import { buildHealth } from './runtime/health.mjs';
 import { createStructuredLogger } from './observability/logger.mjs';
+import { issueSession,validSession,validPassword,loginHtml } from './security/session.mjs';
+import { RateLimiter } from './security/rate-limit.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -25,6 +27,11 @@ const PUBLIC_URL=new URL(ORIGIN);
 const ALLOWED_HOSTS=new Set((process.env.ALLOWED_HOSTS||PUBLIC_URL.host).split(',').map(x=>x.trim()).filter(Boolean));
 if(!['http:','https:'].includes(PUBLIC_URL.protocol))throw new Error('PUBLIC_ORIGIN deve usar http ou https');
 if(HOST!=='127.0.0.1'&&HOST!=='localhost'&&!process.env.PUBLIC_ORIGIN)throw new Error('Defina PUBLIC_ORIGIN ao expor o servidor fora do localhost');
+const AUTH_REQUIRED=process.env.REQUIRE_AUTH==='true'||!['127.0.0.1','localhost'].includes(PUBLIC_URL.hostname);
+const SITE_PASSWORD=process.env.SITE_PASSWORD||'';
+if(AUTH_REQUIRED&&SITE_PASSWORD.length<12)throw new Error('SITE_PASSWORD deve ter pelo menos 12 caracteres quando o painel estiver exposto fora do localhost');
+const loginLimiter=new RateLimiter({windowMs:10*60000,max:10});
+const apiLimiter=new RateLimiter({windowMs:60000,max:180});
 const DATA = join(ROOT, 'data');
 const bosstiary=JSON.parse(await readFile(join(ROOT,'bosstiary.json'),'utf8'));
 const outfitCache=new Map();
@@ -161,8 +168,23 @@ const whatsapp=createWhatsAppSync({state,persist,broadcast,names:()=>[...new Set
 const server=http.createServer(async(req,res)=>{
   try {
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
-    const url=new URL(req.url,ORIGIN);
-    if(await whatsapp.handle(req,res,url))return;
+    const url=new URL(req.url,ORIGIN),remote=String(req.socket?.remoteAddress||req.headers['cf-connecting-ip']||'unknown');
+    if(url.pathname==='/login'){
+      if(!AUTH_REQUIRED)return new Response();
+      if(req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"});res.end(loginHtml());return;}
+      if(req.method==='POST'){
+        const rate=loginLimiter.check(remote);if(!rate.allowed)return json(res,429,{error:'Muitas tentativas. Aguarde alguns minutos.'});
+        if(req.headers.origin&&req.headers.origin!==ORIGIN)return json(res,403,{error:'Origem inválida'});
+        let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>10000)throw new Error('Login inválido');}
+        const password=new URLSearchParams(raw).get('password')||'';
+        if(!validPassword(password,SITE_PASSWORD)){res.writeHead(403,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(loginHtml('Senha incorreta.'));return;}
+        const secure=PUBLIC_URL.protocol==='https:'?'; Secure':'';res.writeHead(303,{Location:'/', 'Set-Cookie':'boss_session='+issueSession(SITE_PASSWORD)+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200'+secure,'Cache-Control':'no-store'});res.end();return;
+      }
+      return json(res,405,{error:'Método não permitido'});
+    }
+    if(url.pathname.startsWith('/extension/')){if(await whatsapp.handle(req,res,url))return;}
+    if(AUTH_REQUIRED&&!validSession(req.headers.cookie,SITE_PASSWORD)){res.writeHead(303,{Location:'/login','Cache-Control':'no-store'});res.end();return;}
+    const rate=apiLimiter.check(remote);if(!rate.allowed)return json(res,429,{error:'Limite temporário de requisições excedido'});
     if(req.method==='POST') {
       if(req.headers.origin!==ORIGIN || req.headers['x-boss-token']!==sessionToken) return json(res,403,{error:'Acesso não autorizado. Atualize a página.'});
       const input=await body(req);
