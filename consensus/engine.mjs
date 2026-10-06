@@ -5,7 +5,7 @@ function weightedMedian(rows){
  for(const x of sorted){c+=x.weight;if(c>=total/2)return x.value;}return sorted.at(-1)?.value??null;
 }
 export function consensusForEvidence(evidence=[],sources={}){
- const usable=evidence.filter(x=>x.quality?.status!=='DESCARTADO'&&x.quality?.status!=='SUSPEITO'&&!x.anomaly);
+ const usable=evidence.filter(x=>(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status))&&!x.anomaly);
  if(!usable.length)return {status:'SUSPEITO',centerAt:null,confidence:0,sourceCount:0,confirmations:0,conflict:false,confirmingSources:[]};
  const rows=usable.map(x=>({x,value:x.estimatedAt,weight:(sources[x.sourceId]?.effectiveWeight??sources[x.sourceId]?.baseWeight??.5)*((x.quality?.score??50)/100)*x.confidence}));
  const centerAt=Math.round(weightedMedian(rows)),sourceIds=[...new Set(usable.map(x=>x.sourceId))];
