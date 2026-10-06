@@ -11,7 +11,7 @@ export function consensusForEvidence(evidence=[],sources={}){
  const centerAt=Math.round(weightedMedian(rows)),sourceIds=[...new Set(usable.map(x=>x.sourceId))];
  const precise=usable.filter(x=>['minute','hour'].includes(x.precision)),spread=precise.length>=2?Math.max(...precise.map(x=>x.estimatedAt))-Math.min(...precise.map(x=>x.estimatedAt)):0;
  const rangesOverlap=Math.max(...usable.map(x=>x.startAt))<=Math.min(...usable.map(x=>x.endAt));
- const conflict=(precise.length>=2&&spread>3*3600000)||(!rangesOverlap&&sourceIds.length>=2);
+ const conflict=precise.length>=2?spread>3*3600000:(!rangesOverlap&&sourceIds.length>=2);
  const deviations=rows.map(r=>Math.abs(r.value-centerAt)),mad=median(deviations)||0,agreement=clamp(1-mad/(6*3600000));
  const evidenceStrength=1-Math.exp(-sourceIds.length/2),quality=usable.reduce((n,x)=>n+(x.quality?.score??50),0)/usable.length/100;
  const confidence=conflict?Math.min(.45,quality*.5):clamp(.18+.32*evidenceStrength+.28*agreement+.22*quality);
