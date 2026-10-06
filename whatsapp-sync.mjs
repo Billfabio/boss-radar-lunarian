@@ -12,7 +12,7 @@ export function extractObservations(message,names){
  const recognized=rows.filter(r=>r.boss&&r.result);
  return {rows:recognized,pending:rows.some(r=>!r.boss||!r.result)||(!recognized.length&&mentioned.length>0),mentioned};
 }
-export function createWhatsAppSync({state,persist,broadcast,names,worlds,readBody,favorable=()=> 'unknown',saveImage=async()=>{throw new Error('Armazenamento de imagens indisponível');}}){
+export function createWhatsAppSync({state,persist,broadcast,names,worlds,readBody,favorable=()=> 'unknown',saveImage=async()=>{throw new Error('Armazenamento de imagens indisponível');},onRecords=async()=>{}}){
  state.whatsapp ||= {connection:null,pending:[],seen:[],checkpoint:null,status:'Não conectado'};
  state.whatsapp.identified ||= [];
  state.whatsapp.images ||= [];
@@ -71,7 +71,7 @@ export function createWhatsAppSync({state,persist,broadcast,names,worlds,readBod
     ids.push(m.id);seen.add(m.id);
    }
    if(state.groupChecks.length+next.length>50000||state.whatsapp.pending.length+reviews.length>2000)throw new Error('Histórico ou pendências cheio. Exporte e revise antes de continuar.');
-   state.groupChecks.unshift(...next);state.whatsapp.pending.unshift(...reviews);const oldIdentified=new Map(state.whatsapp.identified.map(x=>[x.id,x]));for(const r of recognized)oldIdentified.set(r.id,r);state.whatsapp.identified=[...oldIdentified.values()].slice(-20000);state.whatsapp.seen=[...seen].slice(-20000);state.whatsapp.diagnostics=cleanDiagnostics(input.diagnostics);
+   state.groupChecks.unshift(...next);if(next.length)await onRecords(next);state.whatsapp.pending.unshift(...reviews);const oldIdentified=new Map(state.whatsapp.identified.map(x=>[x.id,x]));for(const r of recognized)oldIdentified.set(r.id,r);state.whatsapp.identified=[...oldIdentified.values()].slice(-20000);state.whatsapp.seen=[...seen].slice(-20000);state.whatsapp.diagnostics=cleanDiagnostics(input.diagnostics);
    if(input.checkpoint&&input.coverage!=='gap'){const cp=input.checkpoint;if(!state.whatsapp.checkpoint||cp.at>=state.whatsapp.checkpoint.at)state.whatsapp.checkpoint={id:cp.id,at:cp.at};}
    state.whatsapp.lastSync=Date.now();state.whatsapp.status=input.coverage==='gap'?'Recuperação incompleta: abra o grupo e carregue mensagens mais antigas.':input.coverage==='baseline'?'Primeira leitura concluída; acompanhamento das próximas mensagens ativo.':'Leitura atualizada';await persist();broadcast('update',{});reply(200,{added,pending,checkpoint:state.whatsapp.checkpoint});
   }catch(e){reply(400,{error:e.message});}
