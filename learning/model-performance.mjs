@@ -18,13 +18,15 @@ export function adaptiveMethodWeight(models,boss,world,name,scaleMinutes=1440){
  return clamp((.35+.65*experience)*(.35+.4*errorScore+.25*hit),.12,1.35);
 }
 export function recalculateForecastOutcome(forecast,event){
- const actual=event.estimatedAt;forecast.actualEventId=event.id;forecast.actualAt=actual;
- forecast.windowHit=actual>=forecast.windowStart&&actual<=forecast.windowEnd;
+ const actual=event.estimatedAt,precise=(event.evidence||[]).some(x=>['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction);
+ forecast.actualEventId=event.id;forecast.actualAt=actual;forecast.actualPrecision=precise?'time':'day';
+ forecast.windowHit=precise?actual>=forecast.windowStart&&actual<=forecast.windowEnd:Math.max(event.startAt||actual,forecast.windowStart)<=Math.min(event.endAt||actual,forecast.windowEnd);
  const center=Number.isFinite(forecast.likelyAt)?forecast.likelyAt:(Number.isFinite(forecast.predictedCenterAt)?forecast.predictedCenterAt:null);
- forecast.errorMinutes=Number.isFinite(center)?Math.round(Math.abs(actual-center)/6000)/10:null;
- forecast.signedErrorMinutes=Number.isFinite(center)?Math.round((actual-center)/6000)/10:null;
+ forecast.errorMinutes=precise&&Number.isFinite(center)?Math.round(Math.abs(actual-center)/6000)/10:null;
+ forecast.signedErrorMinutes=precise&&Number.isFinite(center)?Math.round((actual-center)/6000)/10:null;
  for(const method of forecast.methods||[]){
    if(!Number.isFinite(method.predictedAt))continue;
+   if(!precise){method.actualErrorMinutes=null;method.hit=null;continue;}
    const err=Math.abs(actual-method.predictedAt)/60000,tolerance=Math.max(60,(forecast.windowEnd-forecast.windowStart)/120000);
    method.actualErrorMinutes=Math.round(err*10)/10;method.hit=err<=tolerance;
  }
@@ -33,7 +35,7 @@ export function recalculateForecastOutcome(forecast,event){
 export function rebuildBossModel(forecasts,models,boss,world){
  const k=key(world,boss);delete models[k];
  const rows=forecasts.filter(f=>f.boss===boss&&f.world===world&&f.resolvedAt&&Number.isFinite(f.actualAt)).sort((a,b)=>a.resolvedAt-b.resolvedAt);
- for(const forecast of rows){for(const method of forecast.methods||[]){if(!Number.isFinite(method.predictedAt))continue;const err=Math.abs(forecast.actualAt-method.predictedAt)/60000,tolerance=Math.max(60,(forecast.windowEnd-forecast.windowStart)/120000);learnMethodResult(models,boss,world,method.name,err,err<=tolerance,forecast.resolvedAt);}const model=ensureModel(models,boss,world);model.resolved++;model.lastResolvedAt=Math.max(model.lastResolvedAt||0,forecast.resolvedAt||0);}
+ for(const forecast of rows){for(const method of forecast.methods||[]){if(!Number.isFinite(method.actualErrorMinutes))continue;learnMethodResult(models,boss,world,method.name,method.actualErrorMinutes,!!method.hit,forecast.resolvedAt);}const model=ensureModel(models,boss,world);model.resolved++;model.lastResolvedAt=Math.max(model.lastResolvedAt||0,forecast.resolvedAt||0);}
  return ensureModel(models,boss,world);
 }
 export function resolveForecasts(forecasts,event,models){
@@ -42,7 +44,7 @@ export function resolveForecasts(forecasts,event,models){
  if(!candidates.length)return [];
  const forecast=candidates.sort((a,b)=>b.baseEventAt-a.baseEventAt||a.createdAt-b.createdAt)[0];
  forecast.resolvedAt=Date.now();recalculateForecastOutcome(forecast,event);
- for(const method of forecast.methods||[])if(Number.isFinite(method.predictedAt))learnMethodResult(models,event.boss,event.world,method.name,Math.abs(event.estimatedAt-method.predictedAt)/60000,!!method.hit,forecast.resolvedAt);
+ for(const method of forecast.methods||[])if(Number.isFinite(method.predictedAt)&&Number.isFinite(method.actualErrorMinutes))learnMethodResult(models,event.boss,event.world,method.name,method.actualErrorMinutes,!!method.hit,forecast.resolvedAt);
  const model=ensureModel(models,event.boss,event.world);model.resolved++;model.lastResolvedAt=forecast.resolvedAt;
  return [forecast];
 }
