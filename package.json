@@ -12,7 +12,8 @@
     "check": "node scripts/static-check.mjs",
     "check:intelligence": "node scripts/intelligence-integrity.mjs",
     "test:intelligence-regression": "node scripts/intelligence-regression.mjs",
-    "test:intelligence-load": "node scripts/intelligence-load-test.mjs"
+    "test:intelligence-load": "node scripts/intelligence-load-test.mjs",
+    "test:failure-injection": "node scripts/failure-injection.mjs"
   },
   "engines": {
     "node": ">=22.8"
