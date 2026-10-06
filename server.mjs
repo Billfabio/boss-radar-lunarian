@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WORLDS, uniqueHistory, dueAlert,status } from './logic.mjs';
 import { createVapid, sendPush, allowedEndpoint } from './push.mjs';
+import { createIntelligence } from './intelligence/service.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -52,6 +53,7 @@ async function refreshCharacter(input=CHARACTER_NAME,force=false){
  characterPromises.set(key,promise);return promise;
 }
 function broadcast(type, data) { for (const res of clients) res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); }
+const intelligence=createIntelligence({state,persist,broadcast});
 async function refresh(force=false) {
   const world=state.settings.world;
   const old=cache.get(world);
@@ -60,29 +62,30 @@ async function refresh(force=false) {
   refreshPromise=(async()=>{
     const capturedWorld=world;
     if(!catalog.length) {
-      const response=await fetch('https://cdn.rubinottools.com/json/bosses.json',{signal:AbortSignal.timeout(20000)});
-      if(!response.ok) throw new Error(`Catálogo indisponível (HTTP ${response.status})`);
+      const started=Date.now();const response=await fetch('https://cdn.rubinottools.com/json/bosses.json',{signal:AbortSignal.timeout(20000)});
+      if(!response.ok){intelligence.sourceAttempt('rubinot-catalog',{ok:false,error:`HTTP ${response.status}`,latencyMs:Date.now()-started});throw new Error(`Catálogo indisponível (HTTP ${response.status})`);}
       const raw=await response.json();
       if(!Array.isArray(raw)) throw new Error('Formato do catálogo desconhecido');
       catalog=raw.filter(b=>b && typeof b.name==='string').map(b=>({...b,history:[]}));
+      intelligence.sourceAttempt('rubinot-catalog',{ok:true,records:catalog.length,latencyMs:Date.now()-started});
       await writeFile(join(DATA,'catalog.json'),JSON.stringify(catalog));
     }
     if(!cache.has(capturedWorld))cache.set(capturedWorld,{world:capturedWorld,pending:[],bosses:catalog,fetchedAt:Date.now(),catalogOnly:true});
-    const response=await fetch(PUBLIC_SOURCE,{signal:AbortSignal.timeout(20000),headers:{Accept:'application/json'}});
-    if(!response.ok)throw new Error(`Histórico público indisponível (HTTP ${response.status})`);
-    const result=normalizePublic(await response.json(),capturedWorld,catalog);
+    const publicStarted=Date.now();const response=await fetch(PUBLIC_SOURCE,{signal:AbortSignal.timeout(20000),headers:{Accept:'application/json'}});
+    if(!response.ok){intelligence.sourceAttempt('otbosstracker',{ok:false,error:`HTTP ${response.status}`,latencyMs:Date.now()-publicStarted});throw new Error(`Histórico público indisponível (HTTP ${response.status})`);}
+    const result=normalizePublic(await response.json(),capturedWorld,catalog);intelligence.sourceAttempt('otbosstracker',{ok:true,records:result.bosses.reduce((n,b)=>n+(b.history?.length||0),0),latencyMs:Date.now()-publicStarted});await intelligence.ingestPublic(result);
     try {
-      const official=await fetch(officialURL(capturedWorld),{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json'}});
-      if(!official.ok)throw new Error(`HTTP ${official.status}`);
+      const officialStarted=Date.now();const official=await fetch(officialURL(capturedWorld),{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json'}});
+      if(!official.ok){intelligence.sourceAttempt('rubinot-official',{ok:false,error:`HTTP ${official.status}`,latencyMs:Date.now()-officialStarted});throw new Error(`HTTP ${official.status}`);}
       state.officialSnapshots ||= {};
-      const snapshot=mergeOfficial(result,await official.json(),state.officialSnapshots[capturedWorld]);
+      const snapshot=mergeOfficial(result,await official.json(),state.officialSnapshots[capturedWorld]);intelligence.sourceAttempt('rubinot-official',{ok:true,records:result.officialCoverage||0,latencyMs:Date.now()-officialStarted});await intelligence.ingestOfficial(result);
       state.officialSnapshots[capturedWorld]=snapshot;
       state.officialHistory ||= {};
       const history=state.officialHistory[capturedWorld] ||= [];
       if(!history.length || snapshot.at-history.at(-1).at>=240000)history.push(snapshot);
       state.officialHistory[capturedWorld]=history.slice(-10800);
       await persist();
-    }catch(e){result.officialError=`Estatísticas oficiais indisponíveis: ${e.message}`;}
+    }catch(e){intelligence.sourceAttempt('rubinot-official',{ok:false,error:e.message});result.officialError=`Estatísticas oficiais indisponíveis: ${e.message}`;}
     cache.set(capturedWorld,result); lastError=null; broadcast('update',{world:capturedWorld}); return result;
   })();
   try { return await refreshPromise; } catch(e) { lastError=e.message; throw e; } finally { refreshPromise=null; }
@@ -173,12 +176,12 @@ const server=http.createServer(async(req,res)=>{
         const countKill=input.countKill===true&&input.result==='morto';
         const previous=resolvedProgress(input.boss,state.settings.progress[input.boss],bosstiary);
         if(countKill){const p=resolvedProgress(input.boss,state.settings.progress[input.boss],bosstiary);state.settings.progress[input.boss]=resolvedProgress(input.boss,{...p,kills:p.kills+1,known:true},bosstiary);}
-        state.checks.unshift({id:input.id,boss:input.boss,world:state.settings.world,result:input.result,countKill,previousKills:previous.kills,previousKnown:previous.known,afterKills:previous.kills+1,at:Date.now()}); state.checks=state.checks.slice(0,2000); await persist(); return json(res,200,{ok:true,id:input.id});
+        const savedCheck={id:input.id,boss:input.boss,world:state.settings.world,result:input.result,countKill,previousKills:previous.kills,previousKnown:previous.known,afterKills:previous.kills+1,at:Date.now(),origin:'manual',precision:'minute'};state.checks.unshift(savedCheck); state.checks=state.checks.slice(0,2000); await intelligence.ingestChecks([savedCheck]); await persist(); return json(res,200,{ok:true,id:input.id});
       }
       if(url.pathname==='/api/check/undo'){
         const check=state.checks.find(c=>c.id===input.id);if(!check)return json(res,200,{ok:true});
         if(check.countKill){const p=resolvedProgress(check.boss,state.settings.progress[check.boss],bosstiary);if(p.kills!==check.afterKills)throw new Error('A quantidade foi alterada depois deste registro. Ajuste o total em Meu progresso.');state.settings.progress[check.boss]=resolvedProgress(check.boss,{...p,kills:check.previousKills,known:check.previousKnown},bosstiary);}
-        state.checks=state.checks.filter(c=>c.id!==input.id);await persist();return json(res,200,{ok:true});
+        await intelligence.removeCheck(check);state.checks=state.checks.filter(c=>c.id!==input.id);await persist();return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/group-checks'){
         if(typeof input.batchId!=='string'||!/^[a-zA-Z0-9-]{10,80}$/.test(input.batchId))throw new Error('Rodada inválida');
@@ -186,11 +189,12 @@ const server=http.createServer(async(req,res)=>{
         const names=[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name),...Object.keys(state.settings.progress)])];
         const rows=validateGroupRows(input,names,WORLDS),existing=new Set(state.groupChecks.map(checkKey)),fresh=rows.filter(c=>!existing.has(checkKey(c)));
         if(state.groupChecks.length+fresh.length>50000)throw new Error('Limite de 50 mil checagens. Exporte o histórico antes de continuar.');
-        state.groupChecks.unshift(...fresh.map((c,i)=>({...c,id:input.batchId+'-'+i,batchId:input.batchId,recordedAt:Date.now()})));await persist();broadcast('update',{});return json(res,200,{added:fresh.length,duplicates:rows.length-fresh.length});
+        const stored=fresh.map((c,i)=>({...c,id:input.batchId+'-'+i,batchId:input.batchId,recordedAt:Date.now()}));state.groupChecks.unshift(...stored);await intelligence.ingestChecks(stored);await persist();broadcast('update',{});return json(res,200,{added:fresh.length,duplicates:rows.length-fresh.length});
       }
       if(url.pathname==='/api/group-checks/undo'){
         if(typeof input.batchId!=='string')throw new Error('Rodada inválida');state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await persist();broadcast('update',{});return json(res,200,{ok:true});
       }
+      if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {
@@ -210,7 +214,8 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
       let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
-      return json(res,200,{settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS});
+      await intelligence.ingestChecks([...state.checks,...state.groupChecks]);const intelligent=intelligence.snapshot(state.settings.world);
+      return json(res,200,{settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS});
     }
     if(url.pathname==='/api/events') {
       res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'}); res.write(': connected\n\n'); clients.add(res);
