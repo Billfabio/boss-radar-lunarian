@@ -24,6 +24,10 @@ export function renderIntelligence(model){
  <section class="group-panel"><div class="eyebrow">EVOLUÇÃO DA PRECISÃO</div><h2>7, 30 e 90 dias</h2>
  <div class="table-wrap"><table class="ranking-table intelligence-table"><thead><tr><th>Período</th><th>Previsões avaliadas</th><th>Acerto da janela</th><th>Erro médio</th><th>Corretas</th><th>Incorretas</th></tr></thead><tbody>
  \${periods.map(([k,label])=>{const x=perf[k]||{};return '<tr><td><b>'+label+'</b></td><td>'+(x.predictions||0)+'</td><td>'+(x.windowAccuracy==null?'—':x.windowAccuracy+'%')+'</td><td>'+(x.maeMinutes==null?'—':'±'+x.maeMinutes+' min')+'</td><td>'+(x.correct||0)+'</td><td>'+(x.incorrect||0)+'</td></tr>';}).join('')}
+ </tbody></table></div>
+ ${perf.deterioration?.detected?'<div class="notice"><b>⚠ '+esc(perf.deterioration.message)+'</b><p>Queda de acerto: '+esc(perf.deterioration.accuracyDrop)+' p.p. · razão do erro médio: '+esc(perf.deterioration.maeRatio)+'×</p><p>Possíveis causas a investigar: '+(perf.deterioration.possibleCauses||[]).map(esc).join(' · ')+'</p></div>':''}
+ <h3>Curva de aprendizado</h3><div class="table-wrap"><table class="ranking-table intelligence-table"><thead><tr><th>Faixa</th><th>Amostras com horário</th><th>Erro médio</th><th>Acerto da janela</th></tr></thead><tbody>
+ ${(perf.learningCurve||[]).map(x=>'<tr><td><b>'+esc(x.label)+'</b></td><td>'+esc(x.preciseSamples||0)+'</td><td>'+(x.maeMinutes==null?'Dados insuficientes':'±'+esc(x.maeMinutes)+' min')+'</td><td>'+(x.windowAccuracy==null?'—':esc(x.windowAccuracy)+'%')+'</td></tr>').join('')||'<tr><td colspan="4">Nenhuma previsão com horário preciso foi resolvida ainda.</td></tr>'}
  </tbody></table></div></section>
  <section class="group-panel"><div class="sectionhead"><div><div class="eyebrow">PREVISÃO EXPLICÁVEL</div><h2>Motor inteligente adaptativo</h2></div></div>
  <p class="muted">Cada boss combina métodos diferentes. O sistema aprende quais métodos funcionam melhor para aquele boss e reduz o peso dos que erram mais.</p>
