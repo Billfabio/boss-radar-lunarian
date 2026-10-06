@@ -9,7 +9,8 @@
     "cloud:build": "node cloud/build.mjs",
     "cloud:check": "node cloud/smoke.mjs",
     "cloud:deploy": "wrangler deploy",
-    "check": "node scripts/static-check.mjs"
+    "check": "node scripts/static-check.mjs",
+    "check:intelligence": "node scripts/intelligence-integrity.mjs"
   },
   "engines": {
     "node": ">=22.8"
