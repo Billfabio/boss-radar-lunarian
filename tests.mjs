@@ -154,3 +154,56 @@ test('push endpoints reject arbitrary hosts and credentialed URLs',()=>{
   assert.equal(allowedEndpoint('https://user:password@fcm.googleapis.com/push'),false);
   const keys=createVapid();assert.equal(Buffer.from(keys.publicKey,'base64url').length,65);assert.equal(Buffer.from(keys.privateKey,'base64url').length,32);
 });
+
+
+import {ensureSources,sourceWeight} from './sources/registry.mjs';
+import {makeObservation} from './normalization/observations.mjs';
+import {mergeObservation} from './deduplication/events.mjs';
+import {predictBoss} from './prediction/engine.mjs';
+import {learnFromEvent,anomalyFor} from './learning/reliability.mjs';
+
+test('intelligence deduplicates sighting and kill evidence into one event',()=>{
+ const sources=ensureSources({});for(const s of Object.values(sources))s.effectiveWeight=sourceWeight(s);
+ const events=[],at=Date.parse('2026-10-05T21:30:00-03:00');
+ const seen=makeObservation({evidenceId:'seen-1',boss:'Ferumbras',world:'Lunarian',sourceId:'manual-panel',eventType:'appearance',precision:'minute',estimatedAt:at,manual:true,confidence:.98});
+ const killed=makeObservation({evidenceId:'kill-1',boss:'Ferumbras',world:'Lunarian',sourceId:'whatsapp-group',eventType:'kill',precision:'minute',estimatedAt:at+5*60000,confidence:.85});
+ mergeObservation(events,seen,sources);mergeObservation(events,killed,sources);
+ assert.equal(events.length,1);assert.equal(events[0].eventType,'kill');assert.equal(events[0].evidence.length,2);assert.equal(events[0].status,'confirmed_manual');
+});
+
+test('prediction refuses exact likely time until enough precise history exists',()=>{
+ const base=Date.parse('2026-09-01T12:00:00-03:00'),events=[];
+ for(let i=0;i<6;i++)events.push({boss:'Dharalion',world:'Lunarian',eventType:'kill',estimatedAt:base+i*3*86400000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'day'}]});
+ const p=predictBoss(events,'Dharalion','Lunarian',base+20*86400000);
+ assert.equal(p.status,'ready');assert.equal(p.likelyAt,null);assert.ok(p.windowEnd>p.windowStart);assert.ok(p.confidence<97);
+});
+
+test('prediction exposes likely time only after sufficient precise history',()=>{
+ const base=Date.parse('2026-09-01T12:00:00-03:00'),events=[];
+ for(let i=0;i<8;i++)events.push({boss:'Dharalion',world:'Lunarian',eventType:'kill',estimatedAt:base+i*72*3600000,status:'confirmed_auto',confidence:.92,evidence:[{precision:'minute'}]});
+ const p=predictBoss(events,'Dharalion','Lunarian',base+30*86400000);
+ assert.equal(p.status,'ready');assert.ok(Number.isFinite(p.likelyAt));assert.equal(p.preciseSamples,8);assert.ok(p.probability>=25&&p.probability<=94);
+});
+
+test('anomaly detector flags implausibly early repeat appearances',()=>{
+ const base=Date.parse('2026-10-01T12:00:00-03:00');
+ const events=[
+  {boss:'Ferumbras',world:'Lunarian',eventType:'kill',estimatedAt:base,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]},
+  {boss:'Ferumbras',world:'Lunarian',eventType:'kill',estimatedAt:base+72*3600000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]},
+  {boss:'Ferumbras',world:'Lunarian',eventType:'kill',estimatedAt:base+144*3600000,status:'confirmed_auto',confidence:.9,evidence:[{precision:'minute'}]}
+ ];
+ const prediction=predictBoss(events,'Ferumbras','Lunarian');
+ const obs=makeObservation({evidenceId:'too-soon',boss:'Ferumbras',world:'Lunarian',sourceId:'whatsapp-group',eventType:'appearance',precision:'minute',estimatedAt:base+145*3600000,confidence:.8});
+ assert.equal(anomalyFor(obs,events,prediction)?.kind,'too_soon');
+});
+
+test('dynamic source reliability updates all unevaluated evidence in confirmed event',()=>{
+ const sources=ensureSources({});const beforeA=sources['otbosstracker'].alpha,beforeB=sources['whatsapp-group'].alpha,at=Date.now();
+ const event={status:'confirmed_auto',estimatedAt:at,evidence:[
+  {sourceId:'otbosstracker',precision:'minute',estimatedAt:at+60000,confidence:.8},
+  {sourceId:'whatsapp-group',precision:'minute',estimatedAt:at+120000,confidence:.8}
+ ]};
+ learnFromEvent(event,sources);
+ assert.ok(sources['otbosstracker'].alpha>beforeA);assert.ok(sources['whatsapp-group'].alpha>beforeB);
+ assert.equal(event.evidence.every(x=>x.evaluated),true);
+});
