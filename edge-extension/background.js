@@ -1,23 +1,47 @@
-const BASE='http://127.0.0.1:4317';
+const BASE='http://127.0.0.1:4317',GROUP='Lunarian',VERSION=chrome.runtime.getManifest().version;
+const MAX_QUEUE=5000,QUEUE_TTL=48*3600000;
 function serviceURL(value){const u=new URL(value||BASE);if(u.username||u.password)throw new Error('Não use usuário ou senha na URL.');if(u.origin===BASE||u.protocol==='https:')return u.origin;throw new Error('Use o endereço local ou uma origem HTTPS segura.');}
-let busy=false;
-async function request(path,data,key,base){const stored=await chrome.storage.local.get('config');const url=serviceURL(base||stored.config?.serviceURL);const r=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json','X-Radar-Extension':chrome.runtime.id,...(key?{'X-Radar-Key':key}:{})},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await r.json();if(!r.ok)throw new Error(result.error||'Falha na conexão');return result;}
-async function tellStatus(status){await chrome.storage.local.set({status});}
+async function request(path,data,key,base){const stored=await chrome.storage.local.get('config'),url=serviceURL(base||stored.config?.serviceURL);const r=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json','X-Radar-Extension':chrome.runtime.id,...(key?{'X-Radar-Key':key}:{})},body:JSON.stringify(data),signal:AbortSignal.timeout(15000)});let result={};try{result=await r.json();}catch{}if(!r.ok)throw new Error(result.error||('Falha HTTP '+r.status));return result;}
+const metricKeys=['messagesSeen','messagesFiltered','bossMatches','exactMatches','fuzzyMatches','duplicates','errors','observerEvents','batches','requests'];
+function blankMetrics(){return Object.fromEntries(metricKeys.map(k=>[k,0]));}
+async function addMetrics(delta={}){const {collectorMetrics={}}=await chrome.storage.local.get('collectorMetrics'),next={...blankMetrics(),...collectorMetrics};for(const k of metricKeys)if(Number.isFinite(Number(delta[k])))next[k]=Math.max(0,(next[k]||0)+Number(delta[k]));await chrome.storage.local.set({collectorMetrics:next});return next;}
+async function setStatus(status,message=''){await chrome.storage.local.set({collectorStatus:status,status:message||status});}
+function makeSalt(){const a=new Uint8Array(24);crypto.getRandomValues(a);return [...a].map(x=>x.toString(16).padStart(2,'0')).join('');}
+async function getQueue(){const {evidenceQueue=[]}=await chrome.storage.local.get('evidenceQueue'),now=Date.now();return evidenceQueue.filter(x=>now-(x.queuedAt||now)<=QUEUE_TTL);}
+async function enqueueEvidence(rows=[]){let queue=await getQueue();const seen=new Set(queue.map(x=>x.messageFingerprint));let dup=0;for(const row of rows){if(seen.has(row.messageFingerprint)){dup++;continue;}if(queue.length>=MAX_QUEUE){await setStatus('DEGRADED','Fila local cheia; coleta pausada para não perder evidências.');throw new Error('Fila local atingiu o limite de '+MAX_QUEUE+' evidências.');}queue.push({...row,queuedAt:Date.now()});seen.add(row.messageFingerprint);}await chrome.storage.local.set({evidenceQueue:queue});if(dup)await addMetrics({duplicates:dup});return {queued:rows.length-dup,duplicates:dup,size:queue.length};}
+let flushing=false;
+async function scheduleRetry(attempt){const minutes=Math.min(16,Math.pow(2,Math.min(4,Math.max(0,attempt))));await chrome.storage.local.set({retryAttempt:attempt,retryAt:Date.now()+minutes*60000});chrome.alarms.create('queue-retry',{delayInMinutes:minutes});}
+async function flushQueue(){
+ if(flushing)return;flushing=true;
+ try{
+  const {config,paused,retryAttempt=0}=await chrome.storage.local.get(['config','paused','retryAttempt']);if(!config||paused)return;
+  let queue=await getQueue();await chrome.storage.local.set({evidenceQueue:queue});if(!queue.length){await chrome.storage.local.set({retryAttempt:0,retryAt:null});return;}
+  while(queue.length){const batch=queue.slice(0,50);await addMetrics({requests:1,batches:1});try{await request('/api/community/evidence',{group:GROUP,evidence:batch},config.key,config.serviceURL);}catch(e){await addMetrics({errors:1});await setStatus('BACKEND_OFFLINE','Boss Radar indisponível. Evidências preservadas na fila local.');await scheduleRetry(retryAttempt+1);throw e;}queue=queue.slice(batch.length);await chrome.storage.local.set({evidenceQueue:queue,retryAttempt:0,retryAt:null});}
+  await setStatus('CONNECTED','Fila sincronizada com o Boss Radar.');
+ }finally{flushing=false;}
+}
+async function heartbeat(extra={}){
+ const {config,paused,collectorMetrics={},evidenceQueue=[]}=await chrome.storage.local.get(['config','paused','collectorMetrics','evidenceQueue']);if(!config)return;
+ const status=paused?'PAUSED':extra.status||'CONNECTED';try{await request('/extension/heartbeat',{group:GROUP,status,extensionVersion:VERSION,queueSize:evidenceQueue.length,metrics:collectorMetrics,diagnostics:extra.diagnostics||null},config.key,config.serviceURL);if(!paused&&status==='CONNECTED')await setStatus('CONNECTED','Lunarian Collector ativo.');}catch(e){await addMetrics({errors:1,requests:1});await setStatus('BACKEND_OFFLINE','Boss Radar offline; fila local preservada.');}
+}
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
- const local=!sender.tab&&sender.url?.startsWith(chrome.runtime.getURL(''));
- const web=sender.tab?.url?.startsWith('https://web.whatsapp.com/');
+ const local=!sender.tab&&sender.url?.startsWith(chrome.runtime.getURL('')),web=sender.tab?.url?.startsWith('https://web.whatsapp.com/');
  if(!local&&!web)return;
  (async()=>{
-  const {config,paused}=await chrome.storage.local.get(['config','paused']);
-  if(message.type==='pair'&&local){const base=serviceURL(message.serviceURL);const r=await request('/extension/pair',{code:message.code,group:message.group,world:message.world},null,base);await chrome.storage.local.set({config:{key:r.key,group:r.group,world:r.world,names:r.names,serviceURL:base},paused:false,status:'Conectado. Aguardando leitura do grupo.'});return {ok:true};}
-  if(message.type==='image'&&web){if(!config||paused||message.group!==config.group)throw new Error('Grupo não autorizado.');const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(config.key+message.messageId+message.data))),b=>b.toString(16).padStart(2,'0')).join('');const {uploadedImages=[]}=await chrome.storage.local.get('uploadedImages');if(uploadedImages.includes(hash))return {ok:true,duplicate:true};const result=await request('/extension/image',{group:config.group,messageId:message.messageId,data:message.data},config.key);await chrome.storage.local.set({uploadedImages:[...uploadedImages,hash].slice(-2048)});return result;}
-  if(message.type==='config'&&web){if(!config||paused)return {paused:true};try{const r=await request('/extension/config',{group:config.group},config.key);await chrome.storage.local.set({config:{...config,names:r.names},serverCheckpoint:r.checkpoint});return {...r,group:config.group};}catch(e){await tellStatus('Painel indisponível: '+e.message);return {paused:true,error:e.message};}}
-  if(message.type==='status'&&web){await tellStatus(String(message.status).slice(0,250));if(config&&!paused)await request('/extension/status',{group:config.group,status:message.status,diagnostics:message.diagnostics},config.key).catch(()=>{});return {ok:true};}
-  if(message.type==='read-now'&&local){const tabs=await chrome.tabs.query({active:true,currentWindow:true});if(!tabs[0]?.url?.startsWith('https://web.whatsapp.com/'))throw new Error('Abra a extensão na aba do WhatsApp Web.');await chrome.tabs.sendMessage(tabs[0].id,{type:'tick'});return {ok:true};}
-  if(message.type==='sync'&&web){if(!config||paused||message.group!==config.group)throw new Error('Grupo não autorizado ou leitura pausada.');if(busy)throw new Error('Outra aba está sincronizando. Tente na próxima rodada.');busy=true;try{const r=await request('/extension/sync',{group:config.group,messages:message.messages,checkpoint:message.checkpoint,coverage:message.coverage},config.key);await chrome.storage.local.set({serverCheckpoint:r.checkpoint,status:message.coverage==='gap'?'Histórico incompleto. Abra o grupo e carregue mensagens anteriores.':`Atualizado: ${r.added} checagens novas, ${r.pending} para revisar.`,lastSync:Date.now()});return r;}finally{busy=false;}}
+  const stored=await chrome.storage.local.get(['config','paused','reporterSalt']),config=stored.config,paused=stored.paused;
+  if(message.type==='pair'&&local){const base=serviceURL(message.serviceURL),salt=stored.reporterSalt||makeSalt();if(String(message.group||'').trim().toLowerCase()!=='lunarian')throw new Error('Esta versão monitora exclusivamente o grupo Lunarian.');const r=await request('/extension/pair',{code:message.code,group:GROUP,world:message.world,extensionVersion:VERSION},null,base);await chrome.storage.local.set({config:{key:r.key,collectorId:r.collectorId,group:GROUP,world:r.world,dictionary:r.dictionary,dictionaryVersion:r.dictionary?.version||'',serviceURL:base},reporterSalt:salt,paused:false,collectorStatus:'CONNECTED',status:'Conectado. Aguardando Lunarian.',evidenceQueue:[],retryAttempt:0});return {ok:true};}
+  if(message.type==='config'&&web){if(!config||paused)return {paused:true};try{const r=await request('/extension/config',{group:GROUP},config.key,config.serviceURL);const next={...config,dictionary:r.dictionary||config.dictionary,dictionaryVersion:r.dictionary?.version||config.dictionaryVersion,collectorId:r.collectorId||config.collectorId};await chrome.storage.local.set({config:next,serverCheckpoint:r.checkpoint});return {...r,group:GROUP,reporterSalt:stored.reporterSalt||''};}catch(e){await setStatus('BACKEND_OFFLINE','Painel indisponível: '+e.message);return {paused:true,error:e.message,offline:true,dictionary:config.dictionary,group:GROUP,reporterSalt:stored.reporterSalt||''};}}
+  if(message.type==='evidence-batch'&&web){if(!config||paused||message.group!==GROUP)throw new Error('Collector não autorizado ou pausado.');const r=await enqueueEvidence(message.evidence||[]);await flushQueue().catch(()=>{});return {ok:true,...r};}
+  if(message.type==='heartbeat'&&web){await addMetrics(message.metricsDelta||{});await heartbeat({status:message.status,diagnostics:message.diagnostics});if(!paused)await flushQueue().catch(()=>{});const q=await getQueue();return {ok:true,queueSize:q.length};}
+  if(message.type==='image'&&web){if(!config||paused||message.group!==GROUP)throw new Error('Collector não autorizado.');const result=await request('/extension/image',{group:GROUP,messageId:message.messageId,data:message.data},config.key,config.serviceURL);return result;}
+  if(message.type==='read-now'&&local){const tabs=await chrome.tabs.query({active:true,currentWindow:true});if(!tabs[0]?.url?.startsWith('https://web.whatsapp.com/'))throw new Error('Abra a extensão na aba do WhatsApp Web.');await chrome.tabs.sendMessage(tabs[0].id,{type:'tick',manual:true});return {ok:true};}
+  if(message.type==='selected-group'&&local)throw new Error('A seleção do grupo é feita pelo content script.');
+  if(message.type==='status'&&web){await setStatus(message.statusCode||'DEGRADED',String(message.status||'').slice(0,250));await heartbeat({status:message.statusCode||'DEGRADED',diagnostics:message.diagnostics});return {ok:true};}
+  if(message.type==='flush'&&local){await flushQueue();return {ok:true};}
   throw new Error('Ação não permitida');
- })().then(reply).catch(async e=>{await tellStatus(e.message);reply({error:e.message});});
+ })().then(reply).catch(async e=>{await addMetrics({errors:1});await setStatus('ERROR',e.message);reply({error:e.message});});
  return true;
 });
 chrome.alarms.create('check-group',{periodInMinutes:1});
-chrome.alarms.onAlarm.addListener(async()=>{const tabs=await chrome.tabs.query({url:'https://web.whatsapp.com/*'});for(const tab of tabs)chrome.tabs.sendMessage(tab.id,{type:'tick'}).catch(()=>{});});
+chrome.alarms.onAlarm.addListener(async alarm=>{if(alarm.name==='check-group'){const tabs=await chrome.tabs.query({url:'https://web.whatsapp.com/*'});for(const tab of tabs)chrome.tabs.sendMessage(tab.id,{type:'tick',fallback:true}).catch(()=>{});await heartbeat().catch(()=>{});await flushQueue().catch(()=>{});}if(alarm.name==='queue-retry')await flushQueue().catch(()=>{});});
+chrome.runtime.onInstalled.addListener(()=>{chrome.storage.local.set({collectorStatus:'DISCONNECTED',collectorMetrics:blankMetrics()}).catch(()=>{});});
