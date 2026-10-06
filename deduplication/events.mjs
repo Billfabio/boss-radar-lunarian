@@ -15,7 +15,7 @@ export function recomputeEvent(event,sources){
   const base=1-miss,span=Math.max(0,max-min),penalty=span<=45*60000?1:span<=3*3600000?.96:span<=24*3600000?.88:.78;
   event.eventType=evidence.some(x=>x.eventType==='kill')?'kill':evidence.some(x=>x.eventType==='appearance')?'appearance':'absence';
   const anomalous=evidence.filter(x=>x.anomaly).length,anomalyPenalty=anomalous===evidence.length?.55:anomalous?Math.max(.7,1-anomalous/evidence.length*.25):1;
-  const consensus=consensusForEvidence(evidence,sources),qualityScores=active.map(x=>x.quality?.score).filter(Number.isFinite);
+  const consensus=consensusForEvidence(evidence,sources),qualityScores=active.map(x=>Number.isFinite(x.quality?.score)?x.quality.score:Math.round((x.confidence||.5)*100)).filter(Number.isFinite);
   event.dataQualityScore=qualityScores.length?Math.round(qualityScores.reduce((a,b)=>a+b,0)/qualityScores.length*10)/10:null;
   event.consensus=consensus;event.confidence=clamp(Math.max(base*penalty*anomalyPenalty,consensus.confidence||0));
   event.startAt=min;event.endAt=max;event.estimatedAt=Number.isFinite(consensus.centerAt)?consensus.centerAt:(total?Math.round(weightedAt/total):Math.round((min+max)/2));event.sourceCount=sourceIds.size;event.confirmations=active.length;event.confirmingSources=consensus.confirmingSources||[];
