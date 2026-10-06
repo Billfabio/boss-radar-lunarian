@@ -1,10 +1,10 @@
 import {ensureSources,noteSource,sourcePublic} from '../sources/registry.mjs';
 import {publicHistoryObservation,checkObservation,makeObservation,canonical} from '../normalization/observations.mjs';
 import {mergeObservation,recomputeEvent,removeEvidence} from '../deduplication/events.mjs';
-import {refreshEffectiveWeights,learnFromEvent,anomalyFor} from '../learning/reliability.mjs';
+import {refreshEffectiveWeights,learnFromEvent,anomalyFor,rebuildSourceReliability} from '../learning/reliability.mjs';
 import {predictBoss} from '../prediction/engine.mjs';
 import {predictAdaptive,buildAdaptivePredictions} from '../prediction/adaptive-engine.mjs';
-import {resolveForecasts,modelPublic} from '../learning/model-performance.mjs';
+import {resolveForecasts,modelPublic,recalculateForecastOutcome,rebuildBossModel} from '../learning/model-performance.mjs';
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {runHistoricalBacktest} from '../backtest/history.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
@@ -26,7 +26,7 @@ export function createIntelligence({state,persist,broadcast}){
    const prediction=predictAdaptive(intel.events,event.boss,event.world,intel.models);
    if(prediction.status!=='ready'||prediction.baseEventId!==event.id)return null;
    let forecast=intel.forecasts.find(f=>!f.resolvedAt&&f.boss===event.boss&&f.world===event.world&&f.baseEventId===event.id);
-   const fields={boss:event.boss,world:event.world,baseEventId:event.id,baseEventAt:event.estimatedAt,windowStart:prediction.windowStart,windowEnd:prediction.windowEnd,likelyAt:prediction.likelyAt,confidence:prediction.confidence,probability:prediction.probability,methods:prediction.methods,trend:prediction.trend,sampleSize:prediction.sampleSize};
+   const fields={boss:event.boss,world:event.world,baseEventId:event.id,baseEventAt:event.estimatedAt,windowStart:prediction.windowStart,windowEnd:prediction.windowEnd,predictedCenterAt:prediction.predictedCenterAt,likelyAt:prediction.likelyAt,confidence:prediction.confidence,probability:prediction.probability,methods:prediction.methods,trend:prediction.trend,sampleSize:prediction.sampleSize};
    if(forecast){Object.assign(forecast,fields,{lastUpdatedAt:Date.now(),revisions:(forecast.revisions||1)+1});}
    else{forecast={id:'forecast-'+event.id+'-'+Date.now(),...fields,createdAt:Date.now(),lastUpdatedAt:Date.now(),revisions:1};intel.forecasts.unshift(forecast);audit(intel.audit,'forecast_created',{boss:event.boss,world:event.world,forecastId:forecast.id,confidence:forecast.confidence,probability:forecast.probability});}
    return forecast;
@@ -76,9 +76,9 @@ export function createIntelligence({state,persist,broadcast}){
  }
 
  async function removeCheck(check){
-   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
+   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,check.boss,check.world);audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
  }
- async function removeChecks(checks=[]){for(const check of checks){const obs=checkObservation(check);if(obs)removeEvidence(intel.events,obs.evidenceId,intel.sources);}if(checks.length){audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
+ async function removeChecks(checks=[]){const affected=new Set();for(const check of checks){const obs=checkObservation(check);if(obs){removeEvidence(intel.events,obs.evidenceId,intel.sources);affected.add(check.world+'|'+check.boss);}}if(checks.length){rebuildSourceReliability(intel.events,intel.sources);for(const value of affected){const [world,...parts]=value.split('|');rebuildBossModel(intel.forecasts,intel.models,parts.join('|'),world);}audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
 
  async function correct({eventId,at,reason='',actor='site-admin'}){
    const event=intel.events.find(e=>e.id===eventId);if(!event)throw new Error('Evento não encontrado');
@@ -86,7 +86,10 @@ export function createIntelligence({state,persist,broadcast}){
    const oldAt=event.estimatedAt;
    const id=`correction|${eventId}|${Date.now()}`;
    const obs=makeObservation({evidenceId:id,boss:event.boss,world:event.world,sourceId:'manual-panel',eventType:event.eventType,precision:'minute',estimatedAt:value,manual:true,confidence:.995,detail:{correction:true,reason:String(reason||'').slice(0,300),oldAt}});
-   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';learnFromEvent(event,intel.sources);
+   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';
+   for(const forecast of intel.forecasts.filter(f=>f.actualEventId===event.id&&f.resolvedAt))recalculateForecastOutcome(forecast,event);
+   rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,event.boss,event.world);
+   const latest=intel.events.filter(e=>e.boss===event.boss&&e.world===event.world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>b.estimatedAt-a.estimatedAt)[0];if(latest?.id===event.id)upsertForecast(event);
    const row={id,boss:event.boss,world:event.world,eventId,oldAt,newAt:value,actor:String(actor).slice(0,80),reason:String(reason||'').slice(0,300),at:Date.now()};intel.corrections.unshift(row);audit(intel.audit,'event_corrected',row);await save();broadcast?.('update',{});return row;
  }
 
