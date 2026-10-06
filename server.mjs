@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {fetchBossMaps} from './boss-maps.mjs';
 import {createWhatsAppSync} from './whatsapp-sync.mjs';
+import {buildBossDictionary} from './whatsapp-dictionary.mjs';
 import {validateGroupRows,checkKey,groupPatterns,brasiliaDate} from './group-checks.mjs';
 import {entryFor,resolvedProgress} from './bosstiary.mjs';
 import {PUBLIC_SOURCE,normalizePublic} from './public-source.mjs';
