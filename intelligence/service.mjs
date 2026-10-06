@@ -8,7 +8,7 @@ import {resolveForecasts,modelPublic,recalculateForecastOutcome,rebuildBossModel
 import {forecastMetrics,recentForecasts} from '../metrics/forecast-metrics.mjs';
 import {runHistoricalBacktest} from '../backtest/history.mjs';
 import {audit,publicAudit} from '../audit/logger.mjs';
-import {assessObservation,qualitySummary} from '../data-quality/engine.mjs';
+import {assessObservation,reassessEventQuality,qualitySummary} from '../data-quality/engine.mjs';
 import {calibrationReport,calibrateConfidence} from '../learning/calibration.mjs';
 import {championChallengerReport} from '../learning/champion.mjs';
 import {detectDrift} from '../learning/drift.mjs';
@@ -59,6 +59,7 @@ export function createIntelligence({state,persist,broadcast}){
    if(result.duplicate){noteDuplicate(intel.sources,obs.sourceId);appendLedger(intel.ledger,'evidence_duplicate',{evidenceId:obs.evidenceId,sourceId:obs.sourceId,boss:obs.boss,world:obs.world});return result;}
    if(result.event){invalidatePredictions();
      if(obs.anomaly)result.event.anomaly=obs.anomaly;
+     reassessEventQuality(result.event,intel.sources);recomputeEvent(result.event,intel.sources);
      learnFromEvent(result.event,intel.sources);
      const resolved=resolveForecasts(intel.forecasts,result.event,intel.models);
      for(const row of resolved){appendLedger(intel.ledger,'forecast_resolved',{forecastId:row.id,actualEventId:result.event.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});audit(intel.audit,'forecast_resolved',{boss:row.boss,world:row.world,forecastId:row.id,errorMinutes:row.errorMinutes,windowHit:row.windowHit});}
