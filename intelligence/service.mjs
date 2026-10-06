@@ -114,6 +114,16 @@ export function createIntelligence({state,persist,broadcast}){
    const row={id,boss:event.boss,world:event.world,eventId,oldAt,newAt:value,actor:String(actor).slice(0,80),reason:String(reason||'').slice(0,300),at:Date.now()};intel.corrections.unshift(row);appendLedger(intel.ledger,'event_corrected',row);audit(intel.audit,'event_corrected',row);await save();broadcast?.('update',{});return row;
  }
 
+ function selfEvaluation(world,sources,drifts,anomalies){
+   const rows=intel.forecasts.filter(f=>f.world===world&&f.resolvedAt).sort((a,b)=>b.resolvedAt-a.resolvedAt).slice(0,100),precise=rows.filter(f=>Number.isFinite(f.errorMinutes)),errors=precise.map(f=>f.errorMinutes).sort((a,b)=>a-b);
+   const medianError=errors.length?errors[Math.floor(errors.length/2)]:null,accuracy=rows.length?Math.round(1000*rows.filter(f=>f.windowHit).length/rows.length)/10:null;
+   const byBoss=new Map();for(const f of precise){const x=byBoss.get(f.boss)||[];x.push(f.errorMinutes);byBoss.set(f.boss,x);}
+   const bosses=[...byBoss].filter(([,x])=>x.length>=5).map(([boss,x])=>({boss,samples:x.length,mae:Math.round(x.reduce((a,b)=>a+b,0)/x.length*10)/10})).sort((a,b)=>a.mae-b.mae);
+   const sourceRank=sources.filter(x=>x.active&&x.evaluatedRecords>=5).sort((a,b)=>b.reliability-a.reliability);
+   const methodMap=new Map();for(const f of precise){const rows=[{name:'adaptive_ensemble',actualErrorMinutes:f.errorMinutes},...(f.methods||[]),...(f.challengers||[])];for(const m of rows){if(!Number.isFinite(m.actualErrorMinutes))continue;const x=methodMap.get(m.name)||[];x.push(m.actualErrorMinutes);methodMap.set(m.name,x);}}
+   const methods=[...methodMap].filter(([,x])=>x.length>=10).map(([name,x])=>({name,samples:x.length,mae:Math.round(x.reduce((a,b)=>a+b,0)/x.length*10)/10})).sort((a,b)=>a.mae-b.mae);
+   return {window:'last_100_resolved',predictions:rows.length,precisePredictions:precise.length,windowAccuracy:accuracy,maeMinutes:errors.length?Math.round(errors.reduce((a,b)=>a+b,0)/errors.length*10)/10:null,medianErrorMinutes:medianError==null?null:Math.round(medianError*10)/10,bestBoss:bosses[0]||null,worstBoss:bosses.at(-1)||null,bestSource:sourceRank[0]||null,worstSource:sourceRank.at(-1)||null,bestMethod:methods[0]||null,drifts:drifts.length,anomalies:anomalies.length};
+ }
  function trustCenter(world,predictions,performance){
    const sources=sourcePublic(intel.sources),quality=qualitySummary(intel.events,world),calibration=calibrationReport(intel.forecasts,world);
    const bosses=[...new Set(intel.events.filter(e=>e.world===world).map(e=>e.boss))],drifts=bosses.map(boss=>({boss,...detectDrift(intel.events,boss,world)})).filter(x=>x.detected);
@@ -125,8 +135,8 @@ export function createIntelligence({state,persist,broadcast}){
    for(const d of drifts.slice(0,20))alerts.push({kind:'drift',severity:'medium',message:`Mudança de comportamento detectada em ${d.boss}: ${d.changePercent}% no intervalo recente.`,boss:d.boss});
    if(conflicts.length)alerts.push({kind:'source_conflict',severity:'medium',message:`${conflicts.length} evento(s) com conflito entre fontes aguardando resolução.`});
    for(const g of governance.filter(x=>x.promotionRecommended).slice(0,20))alerts.push({kind:'challenger',severity:'info',message:`${g.boss}: challenger ${g.promotionRecommended} superou o Champion com evidência estatística suficiente.`,boss:g.boss});
-   const insufficient=predictions.filter(p=>p.status==='insufficient').map(p=>({boss:p.boss,reason:p.reason||'Dados insuficientes'}));
-   return {quality,calibration,sources,conflicts:conflicts.length,quarantined:suspect.length,anomalies:anomalies.length,drifts,governance,insufficientBosses:insufficient,ledger:verifyLedger(intel.ledger),alerts,engineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION};
+   const insufficient=predictions.filter(p=>p.status==='insufficient').map(p=>({boss:p.boss,reason:p.reason||'Dados insuficientes'})),autoEvaluation=selfEvaluation(world,sources,drifts,anomalies);
+   return {quality,calibration,sources,conflicts:conflicts.length,quarantined:suspect.length,anomalies:anomalies.length,drifts,governance,insufficientBosses:insufficient,autoEvaluation,ledger:verifyLedger(intel.ledger),alerts,engineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION};
  }
  function snapshot(world){
    refreshEffectiveWeights(intel.sources);
