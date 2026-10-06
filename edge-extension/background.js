@@ -1,5 +1,5 @@
 const BASE='http://127.0.0.1:4317';
-function serviceURL(value){const u=new URL(value||BASE);if(u.origin===BASE||u.protocol==='https:'&&u.hostname.endsWith('.workers.dev'))return u.origin;throw new Error('Use o endereço local ou o endereço HTTPS da hospedagem workers.dev.');}
+function serviceURL(value){const u=new URL(value||BASE);if(u.username||u.password)throw new Error('Não use usuário ou senha na URL.');if(u.origin===BASE||u.protocol==='https:')return u.origin;throw new Error('Use o endereço local ou uma origem HTTPS segura.');}
 let busy=false;
 async function request(path,data,key,base){const stored=await chrome.storage.local.get('config');const url=serviceURL(base||stored.config?.serviceURL);const r=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json','X-Radar-Extension':chrome.runtime.id,...(key?{'X-Radar-Key':key}:{})},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await r.json();if(!r.ok)throw new Error(result.error||'Falha na conexão');return result;}
 async function tellStatus(status){await chrome.storage.local.set({status});}
