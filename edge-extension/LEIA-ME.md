@@ -1,6 +1,6 @@
 # Boss Radar · Lunarian Collector
 
-Versão atual: **1.4.0**. Esta é a evolução da extensão original do Boss Radar; não existe um segundo collector paralelo.
+Versão atual: **1.5.0**. Esta é a evolução da extensão original do Boss Radar; não existe um segundo collector paralelo.
 
 ## O que mudou
 
@@ -15,7 +15,7 @@ Somente a sua ação **CONFIRMAR** ou **CORRIGIR** na Central de Confirmações 
 ## Instalação / atualização
 
 1. Abra `edge://extensions` ou `chrome://extensions` e habilite o modo de desenvolvedor.
-2. Se já usa a extensão antiga, substitua os arquivos pela versão 1.4.0 e clique **Recarregar**. Não apague o histórico do Boss Radar.
+2. Se já usa a extensão antiga, substitua os arquivos pela versão 1.5.0 e clique **Recarregar**. Não apague o histórico do Boss Radar.
 3. Abra o Boss Radar e o WhatsApp Web no mesmo navegador.
 4. No painel, gere um código de conexão do Collector.
 5. No popup, informe o mundo e o endereço local/HTTPS do seu Boss Radar. O grupo é fixo: **Lunarian**.
@@ -26,7 +26,7 @@ O pacote `boss-radar-extension.zip` deve corresponder aos arquivos desta pasta.
 
 ## Privacidade
 
-A extensão não observa conversas privadas, outros grupos, status ou contatos como fonte do Collector. O content script só processa a conversa principal quando o cabeçalho detectado corresponde a **Lunarian**.
+A extensão não observa conversas privadas, outros grupos, status ou contatos como fonte do Collector. O content script só processa a conversa principal quando o cabeçalho detectado corresponde a **Lunarian**. Quando o WhatsApp expõe um identificador interno estável @g.us, a extensão o vincula localmente e rejeita outra conversa com o mesmo nome visual; esse identificador bruto não é enviado ao Boss Radar.
 
 A maior parte do descarte ocorre localmente. Mensagens sem boss são filtradas e não entram na fila do backend. Quando uma mensagem relevante é enviada, o backend recebe somente os campos necessários para revisão: texto relacionado ao boss, timestamp, candidatos, classificação contextual, fingerprint e um identificador pseudonimizado do autor.
 
@@ -72,7 +72,7 @@ O polling de 20 segundos da versão antiga foi removido. O content script usa um
 
 A extensão não depende do service worker permanecer vivo. Configuração, fila, métricas, checkpoint, salt e estado de pausa ficam em `chrome.storage.local`.
 
-Caches e filas possuem limite. A fila de evidências suporta até 5.000 itens e descarta apenas entradas com mais de 48 horas. O retry usa backoff controlado e batching de até 50 evidências.
+Caches e filas possuem limite. A fila de evidências suporta até 5.000 itens e descarta apenas entradas com mais de 48 horas. Mensagens analisadas usam cache local de até 10.000 chaves com TTL de 24 horas para evitar reprocessamento. O retry usa backoff exponencial com jitter criptográfico e batching de até 50 evidências.
 
 ## Offline e gaps
 
@@ -103,7 +103,7 @@ A extensão usa Manifest V3 e CSP explícita. Permissões obrigatórias continua
 
 Para um Boss Radar remoto HTTPS, o navegador solicita permissão opcional somente para a origem escolhida pelo usuário.
 
-O código de pairing expira. O Collector recebe uma chave aleatória própria; o backend persiste apenas seu hash. Desconectar pelo painel revoga esse Collector.
+O código de pairing expira. O Collector recebe uma chave aleatória própria; o backend persiste apenas seu hash. Desconectar pelo painel revoga esse Collector. Reparear também revoga a chave anterior, mantendo apenas histórico técnico limitado dos collectorId revogados.
 
 Nenhuma senha administrativa, secret ou token permanente é incluído na extensão.
 
