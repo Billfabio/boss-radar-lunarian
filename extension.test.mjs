@@ -59,3 +59,32 @@ test('extension source uses MutationObserver instead of aggressive interval and 
 });
 
 test('latency percentiles are deterministic and do not invent samples',()=>{assert.deepEqual(latencyPercentiles([]),{count:0,p50:null,p95:null,p99:null});const r=latencyPercentiles([10,20,30,40,50]);assert.equal(r.p50,30);assert.equal(r.p95,40);assert.equal(r.p99,40);});
+
+
+test('manual decisions learn pseudonymous reporter reputation and recurring fuzzy aliases only after confirmation',async()=>{
+ const state={groupChecks:[],whatsapp:{}},dict=()=>buildBossDictionary({catalog:[{name:'Ferumbras'}],aliases:state.whatsapp?.aliases||{}});
+ const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
+ const origin='chrome-extension://'+'e'.repeat(32),pair=await sync.control('/api/whatsapp/pair-code',{});
+ const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
+ const key=(await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'})).key,base=Date.now()-3600000;
+ const evidence=[0,1,2].map(i=>({messageFingerprint:(String(i+7)).repeat(64),bossCandidates:[{name:'Ferumbras',matchType:'FUZZY',similarity:.91,matched:'Ferunbras'}],messageTimestamp:base+i*20*60000,capturedTimestamp:base+i*20*60000+500,authorHash:String.fromCharCode(97+i).repeat(64),contextClassification:'POSSIBLE_REPORT',text:'Ferunbras saiu',normalizedText:'ferunbras saiu'}));
+ await call('/api/community/evidence',{group:'Lunarian',evidence},key);assert.equal(state.whatsapp.candidates.length,3);
+ for(const c of [...state.whatsapp.candidates])await sync.control('/api/whatsapp/candidate-confirm',{id:c.id,at:c.estimatedAt});
+ const p=sync.publicState();assert.equal(p.aliasSuggestions.length,1);assert.equal(p.aliasSuggestions[0].alias,'Ferunbras');assert.equal(p.aliasSuggestions[0].reporters,3);
+ assert.equal(p.candidates.find(c=>c.evidence[0].authorHash==='a'.repeat(64)).evidence[0].reporter.samples,1);
+ const approved=await sync.control('/api/whatsapp/alias-approve',{boss:'Ferumbras',alias:'Ferunbras'});assert.ok(approved.dictionary.entries[0].aliases.includes('Ferunbras'));
+});
+
+test('heartbeat records collection gaps and distinguishes browser uptime from Lunarian coverage',async()=>{
+ const state={groupChecks:[],whatsapp:{}},sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:()=>buildBossDictionary({catalog:[{name:'Ferumbras'}]}),names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
+ const origin='chrome-extension://'+'f'.repeat(32),pair=await sync.control('/api/whatsapp/pair-code',{});
+ const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
+ const paired=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'}),now=Date.now();state.whatsapp.collector.lastHeartbeatAt=now-120000;
+ await call('/extension/heartbeat',{group:'Lunarian',status:'DEGRADED',extensionVersion:'1.4.0',queueSize:0,metrics:{},diagnostics:{configured:'Lunarian',detected:'Lunarian',domOk:true,gapDetected:true,gapFrom:now-60000,gapTo:now-30000}},paired.key);
+ const p=sync.publicState();assert.equal(p.health.browserConnected,true);assert.equal(p.health.lunarianDetected,true);assert.ok(p.coverage.gaps.some(g=>g.reason==='COLLECTION_GAP'));assert.ok(p.coverage.gaps.some(g=>g.reason==='DOM_COLLECTION_GAP'));
+});
+
+test('downloadable extension zip embeds the current packaged source files exactly',async()=>{
+ const zip=await readFile(new URL('./boss-radar-extension.zip',import.meta.url)),files=['manifest.json','adapter.js','collector-core.js','background.js','content.js','popup.html','popup.js','popup.css','LEIA-ME.md'];
+ for(const name of files){const source=await readFile(new URL('./edge-extension/'+name,import.meta.url));assert.ok(zip.indexOf(source)>=0,'ZIP desatualizado: '+name);}
+});
