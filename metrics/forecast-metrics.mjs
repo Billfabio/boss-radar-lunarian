@@ -9,6 +9,13 @@ export function forecastMetrics(forecasts,world,now=Date.now()){
  const rows=forecasts.filter(r=>r.world===world&&r.resolvedAt);
  const windows={days7:summarize(rows.filter(r=>r.resolvedAt>=now-7*DAY)),days30:summarize(rows.filter(r=>r.resolvedAt>=now-30*DAY)),days90:summarize(rows.filter(r=>r.resolvedAt>=now-90*DAY)),all:summarize(rows)};
  const byBoss=[...new Set(rows.map(r=>r.boss))].map(boss=>({boss,...summarize(rows.filter(r=>r.boss===boss))})).sort((a,b)=>b.predictions-a.predictions||a.boss.localeCompare(b.boss));
+ const preciseOrdered=rows.filter(r=>Number.isFinite(r.errorMinutes)).sort((a,b)=>a.resolvedAt-b.resolvedAt),segment=(start,end)=>summarize(preciseOrdered.slice(start,end));
+ const learningCurve=[
+  {label:'Primeiras 100',...segment(0,100)},
+  {label:'Previsões 101–500',...segment(100,500)},
+  {label:'Previsões 501–1000',...segment(500,1000)},
+  {label:'Últimas 100',...summarize(preciseOrdered.slice(-100))}
+ ];
  const baseline=windows.days30.predictions>=10?windows.days30:windows.days90;
  const recent=windows.days7;
  let deterioration=null;
@@ -17,6 +24,6 @@ export function forecastMetrics(forecasts,world,now=Date.now()){
   const maeRatio=baseline.maeMinutes&&recent.maeMinutes?recent.maeMinutes/baseline.maeMinutes:1;
   if(accuracyDrop>=15||maeRatio>=1.5)deterioration={detected:true,accuracyDrop:round(accuracyDrop),maeRatio:round(maeRatio),message:'Queda significativa na precisão detectada.',possibleCauses:['mudança recente no padrão do boss','fonte externa degradada','coleta atrasada ou incompleta','modelo atual inadequado para o comportamento recente']};
  }
- return {...windows,byBoss,totalResolved:rows.length,deterioration};
+ return {...windows,byBoss,totalResolved:rows.length,learningCurve,deterioration};
 }
 export function recentForecasts(forecasts,world,limit=200){return forecasts.filter(r=>r.world===world).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,limit);}
