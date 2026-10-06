@@ -58,8 +58,20 @@ export function createIntelligence({state,persist,broadcast}){
    if(anomaly)obs.anomaly=anomaly;
    obs.quality=assessObservation(obs,{sources:intel.sources,events:intel.events});
    appendLedger(intel.ledger,'evidence_received',{evidenceId:obs.evidenceId,boss:obs.boss,world:obs.world,sourceId:obs.sourceId,sourceRef:obs.sourceRef,collectionMethod:obs.collectionMethod,sourceObservedAt:obs.sourceObservedAt,collectedAt:obs.collectedAt,processedAt:obs.processedAt,quality:obs.quality,anomaly:obs.anomaly||null});
+   const existingEvent=intel.events.find(e=>(e.evidence||[]).some(x=>x.evidenceId===obs.evidenceId)),existing=existingEvent?.evidence?.find(x=>x.evidenceId===obs.evidenceId);
+   if(existing){
+     const wasTraceable=!!existing.quality?.traceable,newTraceable=!!obs.quality?.traceable,sameCore=existing.boss===obs.boss&&existing.world===obs.world&&existing.sourceId===obs.sourceId&&existing.eventType===obs.eventType&&existing.precision===obs.precision&&existing.startAt===obs.startAt&&existing.endAt===obs.endAt&&existing.estimatedAt===obs.estimatedAt;
+     if(!wasTraceable&&newTraceable&&sameCore){
+       for(const key of ['sourceRef','collectionMethod','sourceObservedAt','collectedAt','processedAt','confirmedBy'])if((existing[key]==null||existing[key]===''||existing[key]==='unknown')&&obs[key]!=null&&obs[key]!=='')existing[key]=obs[key];
+       existing.quality=assessObservation(existing,{sources:intel.sources,events:intel.events,peerEvidence:(existingEvent.evidence||[]).filter(x=>x!==existing)});
+       reassessEventQuality(existingEvent,intel.sources);recomputeEvent(existingEvent,intel.sources);invalidatePredictions();learnFromEvent(existingEvent,intel.sources);upsertForecast(existingEvent);
+       appendLedger(intel.ledger,'evidence_provenance_enriched',{evidenceId:obs.evidenceId,eventId:existingEvent.id,boss:obs.boss,world:obs.world,sourceId:obs.sourceId,sourceRef:existing.sourceRef,collectionMethod:existing.collectionMethod});
+       audit(intel.audit,'evidence_provenance_enriched',{boss:obs.boss,world:obs.world,sourceId:obs.sourceId,eventId:existingEvent.id,evidenceId:obs.evidenceId});
+       return {event:existingEvent,duplicate:true,enriched:true};
+     }
+     noteDuplicate(intel.sources,obs.sourceId);appendLedger(intel.ledger,'evidence_duplicate',{evidenceId:obs.evidenceId,sourceId:obs.sourceId,boss:obs.boss,world:obs.world});return {event:existingEvent,duplicate:true,enriched:false};
+   }
    const result=mergeObservation(intel.events,obs,intel.sources);
-   if(result.duplicate){noteDuplicate(intel.sources,obs.sourceId);appendLedger(intel.ledger,'evidence_duplicate',{evidenceId:obs.evidenceId,sourceId:obs.sourceId,boss:obs.boss,world:obs.world});return result;}
    if(result.event){invalidatePredictions();
      if(obs.anomaly)result.event.anomaly=obs.anomaly;
      reassessEventQuality(result.event,intel.sources);recomputeEvent(result.event,intel.sources);
