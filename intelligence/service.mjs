@@ -23,6 +23,9 @@ export function createIntelligence({state,persist,broadcast}){
  const intel=state.intelligence;
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
  intel.version=3;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};intel.ledger ||= [];
+ const previousEngineVersion=intel.engineVersion||null,previousModelVersion=intel.modelVersion||null;
+ if(previousEngineVersion!==PREDICTION_ENGINE_VERSION||previousModelVersion!==MODEL_FAMILY_VERSION)appendLedger(intel.ledger,'engine_version_changed',{fromEngine:previousEngineVersion,fromModel:previousModelVersion,toEngine:PREDICTION_ENGINE_VERSION,toModel:MODEL_FAMILY_VERSION});
+ intel.engineVersion=PREDICTION_ENGINE_VERSION;intel.modelVersion=MODEL_FAMILY_VERSION;
  let qualityBackfilled=0;for(const event of intel.events){for(const evidence of event.evidence||[]){if(!evidence.quality){evidence.quality=assessObservation(evidence,{sources:intel.sources,events:[]});qualityBackfilled++;}}if(event.evidence?.length)recomputeEvent(event,intel.sources);}if(qualityBackfilled)appendLedger(intel.ledger,'quality_backfill',{records:qualityBackfilled,version:3});
  const backtestCache=new Map(),predictionCache=new Map();let intelligenceRevision=0,lastPredictionLatencyMs=null;
  const invalidatePredictions=()=>{intelligenceRevision++;predictionCache.clear();};
@@ -158,7 +161,7 @@ export function createIntelligence({state,persist,broadcast}){
    if(conflicts.length)alerts.push({kind:'source_conflict',severity:'medium',message:`${conflicts.length} evento(s) com conflito entre fontes aguardando resolução.`});
    for(const g of governance.filter(x=>x.promotionRecommended).slice(0,20))alerts.push({kind:'challenger',severity:'info',message:`${g.boss}: challenger ${g.promotionRecommended} superou o Champion com evidência estatística suficiente.`,boss:g.boss});
    const insufficient=predictions.filter(p=>p.status==='insufficient').map(p=>({boss:p.boss,reason:p.reason||'Dados insuficientes'})),autoEvaluation=selfEvaluation(world,sources,drifts,anomalies);
-   return {quality,calibration,sources,conflicts:conflicts.length,quarantined:suspect.length,anomalies:anomalies.length,drifts,governance,insufficientBosses:insufficient,autoEvaluation,ledger:verifyLedger(intel.ledger),alerts,engineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION};
+   return {quality,calibration,sources,conflicts:conflicts.length,quarantined:suspect.length,anomalies:anomalies.length,drifts,governance,insufficientBosses:insufficient,autoEvaluation,ledger:verifyLedger(intel.ledger),algorithmChanges:intel.ledger.filter(x=>x.type==='engine_version_changed').slice(-20).reverse(),alerts,engineVersion:PREDICTION_ENGINE_VERSION,modelVersion:MODEL_FAMILY_VERSION};
  }
  function snapshot(world){
    refreshEffectiveWeights(intel.sources);
