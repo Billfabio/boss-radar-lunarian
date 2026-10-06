@@ -1,6 +1,6 @@
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dt=v=>Number.isFinite(Number(v))?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(Number(v))):'—';
-const sourceRefHtml=(ref,fallback='')=>{const value=String(ref||fallback||'origem não informada');if(/^https?:\/\//i.test(value))return '<a href="'+esc(value)+'" target="_blank" rel="noreferrer noopener">'+esc(value)+'</a>';return '<code>'+esc(value)+'</code>';};
+const sourceRefHtml=(ref,fallback='')=>{const raw=String(ref||'').trim(),known=raw&& !/^(?:unknown|n\/a)$/i.test(raw);if(!known)return '<strong class="source-error">ORIGEM NÃO RASTREÁVEL · QUARENTENA</strong>';if(/^https?:\/\//i.test(raw))return '<a href="'+esc(raw)+'" target="_blank" rel="noreferrer noopener">'+esc(raw)+'</a>';return '<code>'+esc(raw||fallback)+'</code>';};
 const duration=ms=>{if(!Number.isFinite(ms))return '—';const d=ms/86400000;if(d>=2)return d.toFixed(1)+' dias';const h=ms/3600000;if(h>=2)return h.toFixed(1)+' h';return Math.round(ms/60000)+' min';};
 const eventLabel={confirmed_manual:'CONFIRMADO MANUAL',confirmed_auto:'CONFIRMADO AUTO',probable:'PROVÁVEL',unconfirmed:'NÃO CONFIRMADO'};
 const sourceState=s=>!s.active?'PREPARADO':s.circuitState==='OPEN'?'QUARENTENA':s.circuitState==='HALF_OPEN'?'RECUPERAÇÃO':s.lastAttempt&&Date.now()-s.lastAttempt<15*60000?(s.lastError?'ERRO':'ONLINE'):s.lastSuccess?'SEM CONSULTA RECENTE':'AGUARDANDO';
