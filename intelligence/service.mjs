@@ -59,6 +59,7 @@ export function createIntelligence({state,persist,broadcast}){
  async function removeCheck(check){
    if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
  }
+ async function removeChecks(checks=[]){for(const check of checks){const obs=checkObservation(check);if(obs)removeEvidence(intel.events,obs.evidenceId,intel.sources);}if(checks.length){audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
 
  async function correct({eventId,at,reason='',actor='site-admin'}){
    const event=intel.events.find(e=>e.id===eventId);if(!event)throw new Error('Evento não encontrado');
@@ -79,5 +80,5 @@ export function createIntelligence({state,persist,broadcast}){
    return {predictions,metrics,events,sources:sourcePublic(intel.sources),audit:publicAudit(intel.audit),corrections:intel.corrections.filter(x=>x.world===world).slice(0,200),metricsHistory:intel.metricsHistory.slice(-90)};
  }
 
- return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,removeCheck,correct,snapshot,addObservation};
+ return {sourceAttempt,ingestPublic,ingestOfficial,ingestChecks,removeCheck,removeChecks,correct,snapshot,addObservation};
 }
