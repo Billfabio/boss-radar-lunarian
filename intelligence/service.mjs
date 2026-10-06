@@ -24,7 +24,9 @@ export function createIntelligence({state,persist,broadcast}){
  ensureSources(intel.sources);refreshEffectiveWeights(intel.sources);
  intel.version=3;intel.events ||= [];intel.audit ||= [];intel.corrections ||= [];intel.metricsHistory ||= [];intel.forecasts ||= [];intel.models ||= {};intel.ledger ||= [];
  let qualityBackfilled=0;for(const event of intel.events){for(const evidence of event.evidence||[]){if(!evidence.quality){evidence.quality=assessObservation(evidence,{sources:intel.sources,events:[]});qualityBackfilled++;}}if(event.evidence?.length)recomputeEvent(event,intel.sources);}if(qualityBackfilled)appendLedger(intel.ledger,'quality_backfill',{records:qualityBackfilled,version:3});
- const backtestCache=new Map();
+ const backtestCache=new Map(),predictionCache=new Map();let intelligenceRevision=0;
+ const invalidatePredictions=()=>{intelligenceRevision++;predictionCache.clear();};
+ const predictionsFor=world=>{const key=world+'|'+intelligenceRevision;if(predictionCache.has(key))return predictionCache.get(key);const rows=buildAdaptivePredictions(intel.events,world,intel.models).map(calibratedPrediction);predictionCache.set(key,rows);return rows;};
  const save=async()=>{trimOldestFirst(intel.events,200000);trimNewestFirst(intel.audit,10000);trimNewestFirst(intel.corrections,10000);trimOldestFirst(intel.metricsHistory,1095);trimNewestFirst(intel.forecasts,200000);await persist();};
 
  function sourceAttempt(id,result){noteSource(intel.sources,id,result);refreshEffectiveWeights(intel.sources);audit(intel.audit,'source_check',{sourceId:id,ok:!!result.ok,records:result.records||0,latencyMs:result.latencyMs||0,error:result.error||'',circuitState:intel.sources[id]?.circuitState},result.at||Date.now());}
@@ -55,7 +57,7 @@ export function createIntelligence({state,persist,broadcast}){
    appendLedger(intel.ledger,'evidence_received',{evidenceId:obs.evidenceId,boss:obs.boss,world:obs.world,sourceId:obs.sourceId,sourceRef:obs.sourceRef,collectionMethod:obs.collectionMethod,sourceObservedAt:obs.sourceObservedAt,collectedAt:obs.collectedAt,processedAt:obs.processedAt,quality:obs.quality,anomaly:obs.anomaly||null});
    const result=mergeObservation(intel.events,obs,intel.sources);
    if(result.duplicate){noteDuplicate(intel.sources,obs.sourceId);appendLedger(intel.ledger,'evidence_duplicate',{evidenceId:obs.evidenceId,sourceId:obs.sourceId,boss:obs.boss,world:obs.world});return result;}
-   if(result.event){
+   if(result.event){invalidatePredictions();
      if(obs.anomaly)result.event.anomaly=obs.anomaly;
      learnFromEvent(result.event,intel.sources);
      const resolved=resolveForecasts(intel.forecasts,result.event,intel.models);
@@ -95,9 +97,9 @@ export function createIntelligence({state,persist,broadcast}){
  }
 
  async function removeCheck(check){
-   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,check.boss,check.world);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
+   if(!check)return;const obs=checkObservation(check);if(!obs)return;removeEvidence(intel.events,obs.evidenceId,intel.sources);invalidatePredictions();rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,check.boss,check.world);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});audit(intel.audit,'observation_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});await save();
  }
- async function removeChecks(checks=[]){const affected=new Set();for(const check of checks){const obs=checkObservation(check);if(obs){removeEvidence(intel.events,obs.evidenceId,intel.sources);affected.add(check.world+'|'+check.boss);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});}}if(checks.length){rebuildSourceReliability(intel.events,intel.sources);for(const value of affected){const [world,...parts]=value.split('|');rebuildBossModel(intel.forecasts,intel.models,parts.join('|'),world);}audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
+ async function removeChecks(checks=[]){const affected=new Set();if(checks.length)invalidatePredictions();for(const check of checks){const obs=checkObservation(check);if(obs){removeEvidence(intel.events,obs.evidenceId,intel.sources);affected.add(check.world+'|'+check.boss);appendLedger(intel.ledger,'evidence_removed',{boss:check.boss,world:check.world,evidenceId:obs.evidenceId});}}if(checks.length){rebuildSourceReliability(intel.events,intel.sources);for(const value of affected){const [world,...parts]=value.split('|');rebuildBossModel(intel.forecasts,intel.models,parts.join('|'),world);}audit(intel.audit,'observations_removed',{count:checks.length});await save();}}
 
  async function correct({eventId,at,reason='',actor='site-admin'}){
    const event=intel.events.find(e=>e.id===eventId);if(!event)throw new Error('Evento não encontrado');
@@ -105,7 +107,7 @@ export function createIntelligence({state,persist,broadcast}){
    const oldAt=event.estimatedAt,id=`correction|${eventId}|${Date.now()}`;
    const obs=makeObservation({evidenceId:id,boss:event.boss,world:event.world,sourceId:'manual-panel',sourceRef:'boss-radar://manual-correction',collectionMethod:'manual_correction',confirmedBy:actor,eventType:event.eventType,precision:'minute',estimatedAt:value,sourceObservedAt:value,manual:true,confidence:.995,detail:{correction:true,reason:String(reason||'').slice(0,300),oldAt}});
    obs.quality=assessObservation(obs,{sources:intel.sources,events:intel.events});appendLedger(intel.ledger,'event_correction_requested',{eventId,boss:event.boss,world:event.world,oldAt,newAt:value,reason:String(reason||'').slice(0,300),actor:String(actor).slice(0,80),evidenceId:id});
-   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';event.qualityStatus='CONFIRMADO';
+   event.evidence.push(obs);event.corrected=true;event.anomaly=null;recomputeEvent(event,intel.sources);event.status='confirmed_manual';event.qualityStatus='CONFIRMADO';invalidatePredictions();
    for(const forecast of intel.forecasts.filter(f=>f.actualEventId===event.id&&f.resolvedAt))recalculateForecastOutcome(forecast,event);
    rebuildSourceReliability(intel.events,intel.sources);rebuildBossModel(intel.forecasts,intel.models,event.boss,event.world);
    const latest=intel.events.filter(e=>e.boss===event.boss&&e.world===event.world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>b.estimatedAt-a.estimatedAt)[0];if(latest?.id===event.id)upsertForecast(event);
@@ -128,7 +130,7 @@ export function createIntelligence({state,persist,broadcast}){
  }
  function snapshot(world){
    refreshEffectiveWeights(intel.sources);
-   const rawPredictions=buildAdaptivePredictions(intel.events,world,intel.models),predictions=rawPredictions.map(calibratedPrediction),performance=forecastMetrics(intel.forecasts,world);
+   const predictions=predictionsFor(world),performance=forecastMetrics(intel.forecasts,world);
    performance.calibration=calibrationReport(intel.forecasts,world);
    const ready=predictions.filter(p=>p.status==='ready'),trust=trustCenter(world,predictions,performance),sources=trust.sources;
    const metrics={bossesModeled:ready.length,bossesInsufficient:predictions.filter(p=>p.status==='insufficient').length,averageConfidence:ready.length?Math.round(ready.reduce((n,p)=>n+p.confidence,0)/ready.length*10)/10:null,averagePredictionScore:ready.length?Math.round(ready.reduce((n,p)=>n+(p.predictionScore||0),0)/ready.length*10)/10:null,dataQualityScore:trust.quality.averageScore,calibrationError:trust.calibration.ece,windowAccuracy:performance.days30.windowAccuracy,maeMinutes:performance.days30.maeMinutes,backtestSamples:performance.days30.predictions,totalResolved:performance.totalResolved};
