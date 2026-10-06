@@ -234,3 +234,15 @@ test('rolling forecast metrics report 7 30 and 90 day windows',()=>{
  const m=forecastMetrics([mk(2,true,5),mk(15,false,20),mk(60,true,10),mk(120,true,2)],'Lunarian',now);
  assert.equal(m.days7.predictions,1);assert.equal(m.days30.predictions,2);assert.equal(m.days90.predictions,3);assert.equal(m.all.predictions,4);assert.equal(m.days30.windowAccuracy,50);
 });
+
+
+test('WhatsApp streams newly accepted records to intelligence callback immediately',async()=>{
+ const state={groupChecks:[],settings:{progress:{}}};let streamed=[];
+ const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},names:()=>['Dharalion'],worlds:['Lunarian'],readBody:async req=>req.input,onRecords:async rows=>{streamed.push(...rows);}});
+ const code=(await sync.control('/api/whatsapp/pair-code',{})).code,origin='chrome-extension://'+'a'.repeat(32);
+ const call=async(path,input,key)=>{let data,status;const req={method:'POST',headers:{origin,'x-radar-key':key},input};const res={writeHead(n){status=n;},end(v){data=JSON.parse(v);}};await sync.handle(req,res,new URL('http://127.0.0.1:4317'+path));return {status,...data};};
+ const paired=await call('/extension/pair',{code,group:'Bosses',world:'Lunarian'});
+ const id='f'.repeat(64),at=Date.parse('2026-10-05T10:10:00-03:00');
+ await call('/extension/sync',{group:'Bosses',messages:[{id,text:'Dharalion encontrado',date:'2026-10-05',time:'10:10'}],checkpoint:{id,at},coverage:'complete'},paired.key);
+ assert.equal(streamed.length,1);assert.equal(streamed[0].boss,'Dharalion');assert.equal(streamed[0].origin,'whatsapp');
+});
