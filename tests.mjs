@@ -209,7 +209,7 @@ test('dynamic source reliability updates all unevaluated evidence in confirmed e
 });
 
 
-import {predictAdaptive} from './prediction/adaptive-engine.mjs';
+import {predictAdaptive,buildAdaptivePredictions} from './prediction/adaptive-engine.mjs';
 import {resolveForecasts,adaptiveMethodWeight} from './learning/model-performance.mjs';
 import {forecastMetrics} from './metrics/forecast-metrics.mjs';
 
@@ -591,4 +591,11 @@ test('quarantined minute evidence does not count as precise history for exact pr
  }
  const p=predictAdaptive(events,'Precision Quarantine','Lunarian',{});
  assert.equal(p.status,'ready');assert.equal(p.preciseSamples,0);assert.equal(p.likelyAt,null);assert.ok(p.readiness.exactReasons.some(x=>/menos de 8 aparições com horário preciso/.test(x)));
+});
+
+
+test('boss with only quarantined evidence is surfaced as insufficient instead of disappearing',()=>{
+ const at=Date.now()-3600000,events=[{id:'only-q',boss:'Only Quarantine',world:'Lunarian',eventType:'kill',estimatedAt:at,status:'unconfirmed',qualityStatus:'AGUARDANDO_CONFIRMAÇÃO',dataQualityScore:60,confidence:.5,evidence:[{precision:'minute',quality:{status:'AGUARDANDO_CONFIRMAÇÃO',eligibleForLearning:false,traceable:true}}]}];
+ const rows=buildAdaptivePredictions(events,'Lunarian',{});
+ assert.equal(rows.length,1);assert.equal(rows[0].boss,'Only Quarantine');assert.equal(rows[0].status,'insufficient');assert.match(rows[0].reason,/DADOS INSUFICIENTES/);
 });
