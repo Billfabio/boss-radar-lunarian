@@ -37,6 +37,11 @@ export function runAdvancedExperiments(d,world,asOf=Date.now()){
  adjustFDR(results,'validation','BY');adjustFDR(results,'test','BY');for(const r of results){r.status=r.discoverySamples<30||r.test.withSignal.samples<20||r.validation.withSignal.samples<20?'AMOSTRA_INSUFICIENTE':r.validation.passed&&r.test.passed&&r.validation.q<=.05&&r.test.q<=.05?'SHADOW_MODE':'REJEITADO';if(!d.experiments.some(e=>e.id===r.id))d.experiments.push(r);}return results;
 }
 export function ensureProspective(d){d.policies||=[];d.prospective||=[];d.datasets||={};d.governanceHistory||=[];}
+export function verifyProspectiveForecast(row){
+ const hash=digest({policyId:row.policyId,at:row.at,endAt:row.endAt,datasetHash:row.datasetHash,features:row.features,baseline:row.baseline,signal:row.signal});
+ if(hash!==row.immutableHash)throw new Error('Previsão prospectiva alterada');
+ return true;
+}
 export function stagePolicies(d,world,at=Date.now()){
  ensureProspective(d);for(const e of d.experiments.filter(e=>e.world===world&&e.status==='SHADOW_MODE'&&(e.horizonHours==null||e.horizonHours===6))){if(d.policies.some(p=>p.experimentId===e.id))continue;d.policies.push({id:'POL-'+digest(e.id).slice(0,20),kind:'signal',world,boss:e.boss,experimentId:e.id,recipe:e.recipe||{algorithm:'features',keys:[e.signal]},status:'SHADOW_MODE',createdAt:at,stageStartedAt:at,percentage:0,stage:0,productionEligible:false,retrospectiveHash:e.datasetHash});}
  return d.policies.filter(p=>p.world===world);
@@ -61,5 +66,5 @@ export function advancePolicy(d,id,at=Date.now()){
 export function governedSignal(d,world,boss,asOf,eventKey){
  ensureProspective(d);const policies=d.policies.filter(p=>p.kind==='signal'&&p.world===world&&p.boss===boss&&p.createdAt<=asOf).map(p=>{
  const historical=d.governanceHistory.filter(h=>h.policyId===p.id&&h.at<=asOf).at(-1);return historical?{...p,status:historical.status,percentage:historical.percentage}:{...p,status:'SHADOW_MODE',percentage:0};
- }).filter(p=>['CANARY','PRODUCAO'].includes(p.status)&&!(p.rollbackAt&&p.rollbackAt<=asOf));for(const p of policies){const selected=parseInt(digest({policyId:p.id,eventKey}).slice(0,8),16)%100<p.percentage;if(!selected)continue;const latest=d.prospective.filter(f=>f.policyId===p.id&&f.at<=asOf&&f.endAt>asOf).at(-1);if(!latest)continue;const ds=d.datasets[latest.datasetHash];if(!ds||digest({train:ds.train,pool:ds.pool,features:ds.features,recipe:ds.recipe})!==ds.hash)throw new Error('Dataset prospectivo alterado');return {probability:latest.signal,policyId:p.id,status:p.status,horizonHours:(latest.endAt-asOf)/3600000,windowStart:latest.at,windowEnd:latest.endAt,issuedAt:latest.at,expiresAt:latest.endAt,validated:true};}return null;
+ }).filter(p=>['CANARY','PRODUCAO'].includes(p.status)&&!(p.rollbackAt&&p.rollbackAt<=asOf));for(const p of policies){const selected=parseInt(digest({policyId:p.id,eventKey}).slice(0,8),16)%100<p.percentage;if(!selected)continue;const latest=d.prospective.filter(f=>f.policyId===p.id&&f.at<=asOf&&f.endAt>asOf).at(-1);if(!latest)continue;verifyProspectiveForecast(latest);const ds=d.datasets[latest.datasetHash];if(!ds||digest({train:ds.train,pool:ds.pool,features:ds.features,recipe:ds.recipe})!==ds.hash)throw new Error('Dataset prospectivo alterado');return {probability:latest.signal,policyId:p.id,status:p.status,horizonHours:(latest.endAt-asOf)/3600000,windowStart:latest.at,windowEnd:latest.endAt,issuedAt:latest.at,expiresAt:latest.endAt,validated:true};}return null;
 }

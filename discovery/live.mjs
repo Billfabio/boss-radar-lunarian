@@ -1,6 +1,7 @@
 import {mean,probabilityMetrics,clamp} from './statistics.mjs';
 import {eventsAsOf} from './canonical-events.mjs';
 import {buildCases,probabilities,signalFeatures} from './signals.mjs';
+import {verifyProspectiveForecast} from './experiments.mjs';
 import {replaySettings,replayAlerts} from './history.mjs';
 import {digest} from '../mlops/feature-store.mjs';
 export function liveProbability(d,world,boss,asOf=Date.now()){
@@ -24,6 +25,7 @@ export function predictability(experiments){
 export function historicalReplay(d,world,startAt,endAt,stepMinutes=60,forecastRuns=[]){
  if(!Number.isFinite(startAt)||!Number.isFinite(endAt)||startAt>=endAt||endAt-startAt>86400000||endAt>Date.now()||!Number.isFinite(stepMinutes)||stepMinutes<15||stepMinutes>360)throw new Error('Selecione até 24h históricas e passos entre 15 e 360 minutos');
  const snapshots=forecastRuns.filter(r=>r.world===world&&['Champion','Shadow','Challenger'].includes(r.mode)&&r.asOf<=endAt&&r.output).sort((a,b)=>a.asOf-b.asOf);for(const r of snapshots){if(digest({output:r.output,features:r.features,weights:r.weights,rawPrediction:r.rawPrediction,datasetId:r.datasetId,asOf:r.asOf})!==r.immutableHash)throw new Error('Snapshot histórico da previsão alterado');}
+ for(const row of (d.prospective||[]).filter(f=>f.world===world&&f.at<=endAt))verifyProspectiveForecast(row);
  const timeline=[];for(let at=startAt;at<=endAt;at+=stepMinutes*60000){const events=eventsAsOf(d,world,at),bosses=[...new Set(events.map(e=>e.boss))],issued=new Map();for(const r of snapshots.filter(r=>r.asOf<=at))issued.set(r.forecastId,r);
  const predictions=[...issued.values()].map(r=>({forecastId:r.forecastId,boss:r.boss,issuedAt:r.asOf,mode:r.mode,modelVersion:r.modelVersion,windowStart:r.output.windowStart,windowEnd:r.output.windowEnd,confidence:r.output.confidence,likelyAt:r.output.likelyAt??null}));
  timeline.push({at,events:events.map(e=>({id:e.id,boss:e.boss,spawn:e.spawn,availableAt:e.availableAt})),context:d.context.filter(c=>c.world===world&&c.knownAt<=at),predictions,probabilities:bosses.slice(0,100).map(boss=>liveProbability(d,world,boss,at)),settings:replaySettings(d,world,at),prospective:(d.prospective||[]).filter(f=>f.world===world&&f.at<=at&&f.endAt>at).map(f=>({id:f.id,boss:f.boss,issuedAt:f.at,windowEnd:f.endAt,baseline:f.baseline,probability:f.signal,datasetHash:f.datasetHash})),publications:(d.publications||[]).filter(p=>p.availableAt<=at),alerts:replayAlerts(d,world,Math.max(startAt-1,at-stepMinutes*60000),at),alertsStatus:replaySettings(d,world,at)?'Histórico virtual; nenhum envio':'Configurações anteriores não disponíveis'});}

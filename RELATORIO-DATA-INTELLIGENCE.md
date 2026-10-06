@@ -8,14 +8,14 @@ Esta fase implementa a infraestrutura dos cinquenta requisitos, incluindo as par
 
 | Medida | Resultado |
 |---|---|
-| Testes funcionais e de regressão | 141 executados; 141 aprovados |
+| Testes funcionais e de regressão | 143 executados; 143 aprovados |
 | Sintaxe e auditoria anti-IA-de-fachada | Aprovadas |
 | Regression gate temporal | Ensemble 116,9 min de MAE; melhor baseline 116,9 min; 33 casos precisos de teste |
 | Antes / depois no mesmo cenário de referência | 116,9 / 116,9 min; ganho de MAE 0% |
 | Build, smoke e pacote Cloudflare | Aprovados; Wrangler dry-run concluído, sem publicação |
 | Fault injection | Aprovada no runtime ativo |
 | Carga Windows local | Falhou: 36 ECONNREFUSED em 1.000 e 36 em 10.000 requisições; limiares preservados. Mesmo tipo/quantidade observado na base anterior |
-| CI Linux e migrations PostgreSQL | Verificar os resultados do commit final no PR; migration 005 entra no teste de aplicação dupla |
+| CI Linux e migrations PostgreSQL | Pipeline anterior c98fde3 aprovada em todos os checks, incluindo carga Linux e aplicação dupla das migrations; verificar commit final no PR |
 | Eventos reais de spawn utilizados nesta análise operacional | 0; histórico do serviço não disponível no checkout |
 | Pesquisa pública real | 12 URLs candidatas, incluindo 3 raízes iniciais e 9 links encontrados; 5 notícias oficiais coletadas; 0 spawns coletados |
 | Novos sinais aprovados / rejeitados em dados operacionais | 0 / 0; sem dataset elegível. Estados e experimentos negativos são persistidos quando houver execução real |
