@@ -2,6 +2,7 @@ import {predictAdaptive} from '../prediction/adaptive-engine.mjs';
 import {learnMethodResult} from '../learning/model-performance.mjs';
 const H=3600000,DAY=86400000;
 const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&['appearance','kill'].includes(e.eventType);
+const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction);
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 const q=(a,p)=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),x=(s.length-1)*p,i=Math.floor(x),f=x-i;return s[i]+((s[i+1]??s[i])-s[i])*f;};
 function rowsFor(events,boss,world){return events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);}
@@ -32,8 +33,8 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
    }
    for(const m of methods){
     if(!Number.isFinite(m.predictedAt))continue;
-    const error=Math.abs(actual.estimatedAt-m.predictedAt)/60000,windowStart=Number.isFinite(m.windowStart)?m.windowStart:m.predictedAt-12*H,windowEnd=Number.isFinite(m.windowEnd)?m.windowEnd:m.predictedAt+12*H,windowHit=actual.estimatedAt>=windowStart&&actual.estimatedAt<=windowEnd;
-    const rec={boss,world,eventId:actual.id,actualAt:actual.estimatedAt,trainSamples:i,model:m.name,predictedAt:Math.round(m.predictedAt),errorMinutes:Math.round(error*10)/10,windowHit,confidence:adaptive.status==='ready'?adaptive.confidence:null};
+    const minuteEligible=precise(actual),error=minuteEligible?Math.abs(actual.estimatedAt-m.predictedAt)/60000:null,windowStart=Number.isFinite(m.windowStart)?m.windowStart:m.predictedAt-12*H,windowEnd=Number.isFinite(m.windowEnd)?m.windowEnd:m.predictedAt+12*H,windowHit=minuteEligible?actual.estimatedAt>=windowStart&&actual.estimatedAt<=windowEnd:Math.max(actual.startAt||actual.estimatedAt,windowStart)<=Math.min(actual.endAt||actual.estimatedAt,windowEnd);
+    const rec={boss,world,eventId:actual.id,actualAt:actual.estimatedAt,actualPrecision:minuteEligible?'time':'day',trainSamples:i,model:m.name,predictedAt:Math.round(m.predictedAt),errorMinutes:error==null?null:Math.round(error*10)/10,windowHit,confidence:adaptive.status==='ready'?adaptive.confidence:null};
     results.push(rec);all.push(rec);
    }
    if(adaptive.status==='ready')for(const m of adaptive.methods||[])if(Number.isFinite(m.predictedAt))learnMethodResult(models,boss,world,m.name,Math.abs(actual.estimatedAt-m.predictedAt)/60000,actual.estimatedAt>=adaptive.windowStart&&actual.estimatedAt<=adaptive.windowEnd,actual.estimatedAt);
@@ -42,5 +43,5 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
   perBoss.push({boss,events:rows.length,testedEvents:Math.max(0,rows.length-minTrain),bestModel:modelStats[0]?.model||null,models:modelStats});
  }
  const overallModels=[...new Set(all.map(x=>x.model))].map(name=>({model:name,...summarize(all.filter(x=>x.model===name))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
- return {world,generatedAt:Date.now(),eventsEvaluated:new Set(all.map(x=>x.eventId)).size,predictionsEvaluated:all.length,overallModels,perBoss:perBoss.sort((a,b)=>(b.testedEvents||0)-(a.testedEvents||0)||a.boss.localeCompare(b.boss)),recentResults:all.slice(-500)};
+ return {world,generatedAt:Date.now(),eventsEvaluated:new Set(all.map(x=>x.eventId)).size,preciseEventsEvaluated:new Set(all.filter(x=>x.actualPrecision==='time').map(x=>x.eventId)).size,predictionsEvaluated:all.length,overallModels,perBoss:perBoss.sort((a,b)=>(b.testedEvents||0)-(a.testedEvents||0)||a.boss.localeCompare(b.boss)),recentResults:all.slice(-500)};
 }
