@@ -12,7 +12,7 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function ensureSources(value={}){
   for(const [id,d] of Object.entries(SOURCE_DEFINITIONS)){
     const old=value[id]||{};
-    value[id]={id,name:d.name,kind:d.kind,baseWeight:d.baseWeight,active:d.active,eventEvidence:d.eventEvidence,note:d.note||'',alpha:Number(old.alpha)||8*d.baseWeight,beta:Number(old.beta)||8*(1-d.baseWeight),requests:Number(old.requests)||0,successes:Number(old.successes)||0,records:Number(old.records)||0,errors:Number(old.errors)||0,evaluatedRecords:Number(old.evaluatedRecords)||0,correctRecords:Number(old.correctRecords)||0,incorrectRecords:Number(old.incorrectRecords)||0,duplicates:Number(old.duplicates)||0,totalErrorMs:Number(old.totalErrorMs)||0,preciseEvaluatedRecords:Number(old.preciseEvaluatedRecords)||0,preciseCorrectRecords:Number(old.preciseCorrectRecords)||0,preciseTotalErrorMs:Number(old.preciseTotalErrorMs)||0,totalDelayMs:Number(old.totalDelayMs)||0,delaySamples:Number(old.delaySamples)||0,consistencySum:Number(old.consistencySum)||0,consistencySamples:Number(old.consistencySamples)||0,consecutiveFailures:Number(old.consecutiveFailures)||0,circuitState:old.circuitState||'CLOSED',suspendedUntil:Number(old.suspendedUntil)||0,lastAttempt:Number(old.lastAttempt)||0,lastSuccess:Number(old.lastSuccess)||0,lastRecordAt:Number(old.lastRecordAt)||0,lastLatencyMs:Number(old.lastLatencyMs)||0,totalLatencyMs:Number(old.totalLatencyMs)||0,lastError:String(old.lastError||''),recentOutcomes:Array.isArray(old.recentOutcomes)?old.recentOutcomes.slice(-100):[],...old};value[id].recentOutcomes=Array.isArray(value[id].recentOutcomes)?value[id].recentOutcomes.slice(-100):[];
+    value[id]={id,name:d.name,kind:d.kind,baseWeight:d.baseWeight,active:d.active,eventEvidence:d.eventEvidence,note:d.note||'',alpha:Number(old.alpha)||8*d.baseWeight,beta:Number(old.beta)||8*(1-d.baseWeight),requests:Number(old.requests)||0,successes:Number(old.successes)||0,records:Number(old.records)||0,errors:Number(old.errors)||0,evaluatedRecords:Number(old.evaluatedRecords)||0,correctRecords:Number(old.correctRecords)||0,incorrectRecords:Number(old.incorrectRecords)||0,duplicates:Number(old.duplicates)||0,totalErrorMs:Number(old.totalErrorMs)||0,preciseEvaluatedRecords:Number(old.preciseEvaluatedRecords)||0,preciseCorrectRecords:Number(old.preciseCorrectRecords)||0,preciseTotalErrorMs:Number(old.preciseTotalErrorMs)||0,totalDelayMs:Number(old.totalDelayMs)||0,delaySamples:Number(old.delaySamples)||0,consistencySum:Number(old.consistencySum)||0,consistencySamples:Number(old.consistencySamples)||0,consecutiveFailures:Number(old.consecutiveFailures)||0,circuitState:old.circuitState||'CLOSED',circuitReason:old.circuitReason||null,qualityRecoverySuccesses:Number(old.qualityRecoverySuccesses)||0,suspendedUntil:Number(old.suspendedUntil)||0,lastAttempt:Number(old.lastAttempt)||0,lastSuccess:Number(old.lastSuccess)||0,lastRecordAt:Number(old.lastRecordAt)||0,lastLatencyMs:Number(old.lastLatencyMs)||0,totalLatencyMs:Number(old.totalLatencyMs)||0,lastError:String(old.lastError||''),recentOutcomes:Array.isArray(old.recentOutcomes)?old.recentOutcomes.slice(-100):[],...old};value[id].recentOutcomes=Array.isArray(value[id].recentOutcomes)?value[id].recentOutcomes.slice(-100):[];
   }
   return value;
 }
@@ -26,8 +26,14 @@ export function sourceWeight(source){
 export function noteSource(sources,id,{ok,records=0,latencyMs=0,error='',at=Date.now()}={}){
   ensureSources(sources);const s=sources[id];if(!s)return;
   s.requests++;s.lastAttempt=at;s.lastLatencyMs=Math.max(0,Math.round(latencyMs));s.totalLatencyMs=(Number(s.totalLatencyMs)||0)+s.lastLatencyMs;
-  if(ok){s.successes++;s.lastSuccess=at;s.lastError='';s.consecutiveFailures=0;s.circuitState='CLOSED';s.suspendedUntil=0;if(records>0){s.records+=records;s.lastRecordAt=at;}}
-  else{s.errors++;s.consecutiveFailures=(s.consecutiveFailures||0)+1;s.lastError=String(error||'Falha na fonte').slice(0,300);if(s.consecutiveFailures>=3){s.circuitState='OPEN';s.suspendedUntil=at+Math.min(30*60000,5*60000*Math.pow(2,Math.min(3,s.consecutiveFailures-3)));}}
+  if(ok){
+    s.successes++;s.lastSuccess=at;s.consecutiveFailures=0;if(records>0){s.records+=records;s.lastRecordAt=at;}
+    if(s.circuitState==='HALF_OPEN'&&s.circuitReason==='quality'){s.lastError='Fonte em recuperação de qualidade; aguardando evidências corretas.';}
+    else{s.lastError='';s.circuitState='CLOSED';s.circuitReason=null;s.qualityRecoverySuccesses=0;s.suspendedUntil=0;}
+  } else {
+    s.errors++;s.consecutiveFailures=(s.consecutiveFailures||0)+1;s.lastError=String(error||'Falha na fonte').slice(0,300);
+    if(s.consecutiveFailures>=3){s.circuitState='OPEN';s.circuitReason='technical';s.qualityRecoverySuccesses=0;s.suspendedUntil=at+Math.min(30*60000,5*60000*Math.pow(2,Math.min(3,s.consecutiveFailures-3)));}
+  }
 }
 export function sourcePublic(sources){
   ensureSources(sources);return Object.values(sources).map(s=>({...s,reliability:Math.round(sourceWeight(s)*100),successRate:s.requests?Math.round(100*s.successes/s.requests):null,accuracyRate:s.evaluatedRecords?Math.round(1000*s.correctRecords/s.evaluatedRecords)/10:null,averageErrorMinutes:s.preciseEvaluatedRecords?Math.round((s.preciseTotalErrorMs||0)/s.preciseEvaluatedRecords/6000)/10:null,preciseAccuracyRate:s.preciseEvaluatedRecords?Math.round(1000*(s.preciseCorrectRecords||0)/s.preciseEvaluatedRecords)/10:null,averageDelayMinutes:s.delaySamples?Math.round((s.totalDelayMs||0)/s.delaySamples/6000)/10:null,consistency:s.consistencySamples?Math.round(1000*s.consistencySum/s.consistencySamples)/10:null,averageLatencyMs:s.requests?Math.round((s.totalLatencyMs||0)/s.requests):null,recentAccuracy:(s.recentOutcomes||[]).length>=5?Math.round(1000*(s.recentOutcomes||[]).slice(-30).filter(x=>x.correct).length/Math.min(30,(s.recentOutcomes||[]).length))/10:null,recentSamples:Math.min(30,(s.recentOutcomes||[]).length)})).sort((a,b)=>Number(b.active)-Number(a.active)||b.reliability-a.reliability);
@@ -42,7 +48,11 @@ export function noteEvidenceOutcome(sources,id,{correct,errorMs=0,delayMs=null,c
  s.recentOutcomes ||= [];s.recentOutcomes.push({at,correct:!!correct,errorMs:Number.isFinite(errorMs)?Math.max(0,errorMs):null,precision:precision||null,consistency:Number.isFinite(consistency)?clamp(consistency,0,1):null});if(s.recentOutcomes.length>100)s.recentOutcomes.splice(0,s.recentOutcomes.length-100);
  if(updateCircuit&&s.kind!=='manual'){
    const recent=s.recentOutcomes.slice(-12),accuracy=recent.length?recent.reduce((n,x)=>n+(x.correct?1:0),0)/recent.length:1;
-   if(recent.length>=8&&accuracy<.35){s.circuitState='OPEN';s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Fonte suspensa por deterioração recente da qualidade dos dados.';}
+   if(recent.length>=8&&accuracy<.35){s.circuitState='OPEN';s.circuitReason='quality';s.qualityRecoverySuccesses=0;s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Fonte suspensa por deterioração recente da qualidade dos dados.';}
+   else if(s.circuitState==='HALF_OPEN'&&s.circuitReason==='quality'){
+     if(correct){s.qualityRecoverySuccesses=(s.qualityRecoverySuccesses||0)+1;if(s.qualityRecoverySuccesses>=3){s.circuitState='CLOSED';s.circuitReason=null;s.suspendedUntil=0;s.lastError='';s.qualityRecoverySuccesses=0;}}
+     else{s.qualityRecoverySuccesses=0;s.circuitState='OPEN';s.suspendedUntil=Math.max(s.suspendedUntil||0,at+15*60000);s.lastError='Recuperação de qualidade falhou; fonte novamente em quarentena.';}
+   }
  }
 }
 export function canAttemptSource(sources,id,now=Date.now()){
