@@ -1,0 +1,10 @@
+{
+ "name":"boss-radar-kena-rain",
+ "main":"cloud/worker.mjs",
+ "compatibility_date":"2026-10-05",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":true,
+ "durable_objects":{"bindings":[{"name":"RADAR","class_name":"BossRadar"}]},
+ "migrations":[{"tag":"v1","new_sqlite_classes":["BossRadar"]}],
+ "observability":{"enabled":false}
+}

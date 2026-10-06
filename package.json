@@ -1,0 +1,19 @@
+{
+  "name": "boss-radar-lunarian",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test --test-isolation=none tests.mjs",
+    "cloud:build": "node cloud/build.mjs",
+    "cloud:check": "node cloud/smoke.mjs",
+    "cloud:deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22.8"
+  },
+  "devDependencies": {
+    "wrangler": "^4.147.0"
+  }
+}

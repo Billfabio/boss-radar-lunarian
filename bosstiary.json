@@ -1,0 +1,1916 @@
+[
+  {
+    "name": "Abyssador",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/13/Abyssador.gif"
+  },
+  {
+    "name": "Adlerauge",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f3/Adlerauge.gif"
+  },
+  {
+    "name": "Adventurer Group",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/70/Adventurer_Group.gif"
+  },
+  {
+    "name": "Ahau",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2b/Ahau.gif"
+  },
+  {
+    "name": "Alptramun",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c9/Alptramun.gif"
+  },
+  {
+    "name": "Amenef The Burning",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fb/Amenef_The_Burning.gif"
+  },
+  {
+    "name": "Ancient Spawn of Morgathla",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0b/Ancient_Spawn_of_Morgathla.gif"
+  },
+  {
+    "name": "Anmothra",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d2/Anmothra.gif"
+  },
+  {
+    "name": "Annihilon",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/8/83/Annihilon.gif"
+  },
+  {
+    "name": "Anomaly",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9a/Anomaly.gif"
+  },
+  {
+    "name": "Arachir the Ancient One",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c3/Arachir_the_Ancient_One.gif"
+  },
+  {
+    "name": "Arbaziloth",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f0/Arbaziloth.gif"
+  },
+  {
+    "name": "Arthei",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/01/Arthei.gif"
+  },
+  {
+    "name": "Arthom the Hunter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/95/Arthom_the_Hunter.gif"
+  },
+  {
+    "name": "Ashmunrah",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/4/48/Ashmunrah.gif"
+  },
+  {
+    "name": "Atab",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/00/Atab.gif"
+  },
+  {
+    "name": "Ayana the Crimson Curse",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8d/Ayana_the_Crimson_Curse.gif"
+  },
+  {
+    "name": "Bakragore",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/55/Bakragore.gif"
+  },
+  {
+    "name": "Bane Lord",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6e/Bane_Lord.gif"
+  },
+  {
+    "name": "Barbaria",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/88/Barbaria.gif"
+  },
+  {
+    "name": "Battlemaster Zunzu",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1d/Battlemaster_Zunzu.gif"
+  },
+  {
+    "name": "Bibby Bloodbath",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/13/Bibby_Bloodbath.gif"
+  },
+  {
+    "name": "Big Boss Trolliver",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3f/Big_Boss_Trolliver.gif"
+  },
+  {
+    "name": "Black Knight",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ef/Black_Knight.gif"
+  },
+  {
+    "name": "Black Vixen",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/92/Black_Vixen.gif"
+  },
+  {
+    "name": "Blight Mariner",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/cf/Blight_Mariner.gif"
+  },
+  {
+    "name": "Bloodback",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/5/56/Bloodback.gif"
+  },
+  {
+    "name": "Bone Overlord",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0d/Bone_Overlord.gif"
+  },
+  {
+    "name": "Boogey",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4e/Boogey.gif"
+  },
+  {
+    "name": "Boreth",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ca/Boreth.gif"
+  },
+  {
+    "name": "Bragrumol",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b0/Bragrumol.gif"
+  },
+  {
+    "name": "Brain Head",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4e/Brain_Head.gif"
+  },
+  {
+    "name": "Brokul",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ea/Brokul.gif"
+  },
+  {
+    "name": "Bullwark",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/ae/Bullwark.gif"
+  },
+  {
+    "name": "Burster",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6f/Burster.gif"
+  },
+  {
+    "name": "Captain Jones",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/54/Captain_Jones.gif"
+  },
+  {
+    "name": "Chagorz",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/10/Chagorz.gif"
+  },
+  {
+    "name": "Chikhaton",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/aa/Chikhaton.gif"
+  },
+  {
+    "name": "Chizzoron the Distorter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fa/Chizzoron_the_Distorter.gif"
+  },
+  {
+    "name": "Chopper",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8a/Chopper.gif"
+  },
+  {
+    "name": "Clavius",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/7/73/Clavius.gif"
+  },
+  {
+    "name": "Count Vlarkorth",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c7/Count_Vlarkorth.gif"
+  },
+  {
+    "name": "Countess Sorrow",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/16/Countess_Sorrow.gif"
+  },
+  {
+    "name": "Court Warlock",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a9/Court_Warlock.gif"
+  },
+  {
+    "name": "Cublarc the Plunderer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/53/Cublarc_the_Plunderer.gif"
+  },
+  {
+    "name": "Custodian",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/d/db/Custodian.gif"
+  },
+  {
+    "name": "Darkfang",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c6/Darkfang.gif"
+  },
+  {
+    "name": "Dazed Leaf Golem",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/00/Dazed_Leaf_Golem.gif"
+  },
+  {
+    "name": "Death Priest Shargon",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0d/Death_Priest_Shargon.gif"
+  },
+  {
+    "name": "Deathstrike",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/be/Deathstrike.gif"
+  },
+  {
+    "name": "Deep Terror",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/d/dc/Deep_Terror.gif"
+  },
+  {
+    "name": "Despor",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3c/Despor.gif"
+  },
+  {
+    "name": "Devovorga",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/4/40/Devovorga.gif"
+  },
+  {
+    "name": "Dharalion",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ed/Dharalion.gif"
+  },
+  {
+    "name": "Diblis the Fair",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0f/Diblis_the_Fair.gif"
+  },
+  {
+    "name": "Dipthrah",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9f/Dipthrah.gif"
+  },
+  {
+    "name": "Dirtbeard",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0f/Dirtbeard.gif"
+  },
+  {
+    "name": "Diseased Bill",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/34/Diseased_Bill.gif"
+  },
+  {
+    "name": "Diseased Dan",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3f/Diseased_Dan.gif"
+  },
+  {
+    "name": "Diseased Fred",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f8/Diseased_Fred.gif"
+  },
+  {
+    "name": "Doctor Perhaps",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/31/Doctor_Perhaps.gif"
+  },
+  {
+    "name": "Dracola",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/53/Dracola.gif"
+  },
+  {
+    "name": "Dreadful Disruptor",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/09/Dreadful_Disruptor.gif"
+  },
+  {
+    "name": "Dreadmaw",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7f/Dreadmaw.gif"
+  },
+  {
+    "name": "Drume",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f2/Drume.gif"
+  },
+  {
+    "name": "Duke Krule",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0e/Duke_Krule.gif"
+  },
+  {
+    "name": "Earl Osam",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/de/Earl_Osam.gif"
+  },
+  {
+    "name": "Ekatrix",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/17/Ekatrix.gif"
+  },
+  {
+    "name": "Eldritch Dragon Lord",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/2/21/Eldritch_Dragon_Lord.gif"
+  },
+  {
+    "name": "Elvira Hammerthrust",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fa/Elvira_Hammerthrust.gif"
+  },
+  {
+    "name": "Enusat The Onyx Wing",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3b/Enusat_The_Onyx_Wing.gif"
+  },
+  {
+    "name": "Eradicator",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f1/Eradicator.gif"
+  },
+  {
+    "name": "Evil Mastermind",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/39/Evil_Mastermind.gif"
+  },
+  {
+    "name": "Faceless Bane",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a0/Faceless_Bane.gif"
+  },
+  {
+    "name": "Feroxa (Mortal)",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ec/Feroxa_%28Mortal%29.gif"
+  },
+  {
+    "name": "Ferumbras",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0f/Ferumbras.gif"
+  },
+  {
+    "name": "Ferumbras Mortal Shell",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f1/Ferumbras_Mortal_Shell.gif"
+  },
+  {
+    "name": "Flamecaller Zazrak",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8d/Flamecaller_Zazrak.gif"
+  },
+  {
+    "name": "Fleabringer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1c/Fleabringer.gif"
+  },
+  {
+    "name": "Fleshslicer",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c9/Fleshslicer.gif"
+  },
+  {
+    "name": "Foreman Kneebiter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/4/46/Foreman_Kneebiter.gif"
+  },
+  {
+    "name": "Furyosa",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e1/Furyosa.gif"
+  },
+  {
+    "name": "Gaffir",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/cb/Gaffir.gif"
+  },
+  {
+    "name": "Gaz'Haragoth",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/6/63/Gaz%27Haragoth.gif"
+  },
+  {
+    "name": "Gelidrazah the Frozen",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9e/Gelidrazah_the_Frozen.gif"
+  },
+  {
+    "name": "General Murius",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0b/General_Murius.gif"
+  },
+  {
+    "name": "Ghazbaran",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/5e/Ghazbaran.gif"
+  },
+  {
+    "name": "Ghulosh",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e7/Ghulosh.gif"
+  },
+  {
+    "name": "Glitterscale",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/d/da/Glitterscale.gif"
+  },
+  {
+    "name": "Glooth Fairy",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/ba/Glooth_Fairy.gif"
+  },
+  {
+    "name": "Gnomevil",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/34/Gnomevil.gif"
+  },
+  {
+    "name": "Golgordan",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/ad/Golgordan.gif"
+  },
+  {
+    "name": "Gorga",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a0/Gorga.gif"
+  },
+  {
+    "name": "Gorzindel",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/2/26/Gorzindel.gif"
+  },
+  {
+    "name": "Goshnar's Cruelty",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b3/Goshnar%27s_Cruelty.gif"
+  },
+  {
+    "name": "Goshnar's Greed",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a4/Goshnar%27s_Greed.gif"
+  },
+  {
+    "name": "Goshnar's Hatred",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/5/58/Goshnar%27s_Hatred.gif"
+  },
+  {
+    "name": "Goshnar's Malice",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d5/Goshnar%27s_Malice.gif"
+  },
+  {
+    "name": "Goshnar's Megalomania",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ce/Goshnar%27s_Megalomania.gif"
+  },
+  {
+    "name": "Goshnar's Spite",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6c/Goshnar%27s_Spite.gif"
+  },
+  {
+    "name": "Gralvalon",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/5/58/Gralvalon.gif"
+  },
+  {
+    "name": "Grand Canon Dominus",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/ae/Grand_Canon_Dominus.gif"
+  },
+  {
+    "name": "Grand Chaplain Gaunder",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2b/Grand_Chaplain_Gaunder.gif"
+  },
+  {
+    "name": "Grand Commander Soeren",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2e/Grand_Commander_Soeren.gif"
+  },
+  {
+    "name": "Grand Master Oberon",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/49/Grand_Master_Oberon.gif"
+  },
+  {
+    "name": "Grand Mother Foulscale",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8e/Grand_Mother_Foulscale.gif"
+  },
+  {
+    "name": "Grandfather Tridian",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b4/Grandfather_Tridian.gif"
+  },
+  {
+    "name": "Gravelord Oshuran",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/75/Gravelord_Oshuran.gif"
+  },
+  {
+    "name": "Groam",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e0/Groam.gif"
+  },
+  {
+    "name": "Grorlam",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/92/Grorlam.gif"
+  },
+  {
+    "name": "Guard Captain Quaid",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e5/Guard_Captain_Quaid.gif"
+  },
+  {
+    "name": "Hairman The Huge",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8a/Hairman_The_Huge.gif"
+  },
+  {
+    "name": "Hellgorak",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f4/Hellgorak.gif"
+  },
+  {
+    "name": "Heoni",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fd/Heoni.gif"
+  },
+  {
+    "name": "Herald of Fire",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8f/Herald_of_Fire.gif"
+  },
+  {
+    "name": "High Templar Cobrass",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1f/High_Templar_Cobrass.gif"
+  },
+  {
+    "name": "Hirintror",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/93/Hirintror.gif"
+  },
+  {
+    "name": "Horestis",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c3/Horestis.gif"
+  },
+  {
+    "name": "Ice Horror",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/95/Ice_Horror.gif"
+  },
+  {
+    "name": "Ichgahal",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/14/Ichgahal.gif"
+  },
+  {
+    "name": "Inkwing",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/9/99/Inkwing.gif"
+  },
+  {
+    "name": "Irahsae",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/55/Irahsae.gif"
+  },
+  {
+    "name": "Irgix the Flimsy",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1f/Irgix_the_Flimsy.gif"
+  },
+  {
+    "name": "Izcandar Champion of Summer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c3/Izcandar_Champion_of_Summer.gif"
+  },
+  {
+    "name": "Izcandar Champion of Winter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/53/Izcandar_Champion_of_Winter.gif"
+  },
+  {
+    "name": "Izcandar the Banished",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0f/Izcandar_the_Banished.gif"
+  },
+  {
+    "name": "Jailer",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/26/Jailer.gif"
+  },
+  {
+    "name": "Jaul",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/8/84/Jaul.gif"
+  },
+  {
+    "name": "Jesse the Wicked",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c6/Jesse_the_Wicked.gif"
+  },
+  {
+    "name": "Kalyassa",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/12/Kalyassa.gif"
+  },
+  {
+    "name": "Katex Blood Tongue",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6f/Katex_Blood_Tongue.gif"
+  },
+  {
+    "name": "King Chuck",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2d/King_Chuck.gif"
+  },
+  {
+    "name": "King Zelos",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/40/King_Zelos.gif"
+  },
+  {
+    "name": "Kroazur",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6f/Kroazur.gif"
+  },
+  {
+    "name": "Kusuma",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c0/Kusuma.gif"
+  },
+  {
+    "name": "Lady Tenebris",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a9/Lady_Tenebris.gif"
+  },
+  {
+    "name": "Latrivan",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6b/Latrivan.gif"
+  },
+  {
+    "name": "Lersatio",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/08/Lersatio.gif"
+  },
+  {
+    "name": "Lisa",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b9/Lisa.gif"
+  },
+  {
+    "name": "Lizard Gate Guardian",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e2/Lizard_Gate_Guardian.gif"
+  },
+  {
+    "name": "Lloyd",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/dd/Lloyd.gif"
+  },
+  {
+    "name": "Lokathmor",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fb/Lokathmor.gif"
+  },
+  {
+    "name": "Lord Azaram",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a6/Lord_Azaram.gif"
+  },
+  {
+    "name": "Lord of the Elements",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/60/Lord_of_the_Elements.gif"
+  },
+  {
+    "name": "Lord Retro",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8c/Lord_Retro.gif"
+  },
+  {
+    "name": "Mad Mage",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2f/Mad_Mage.gif"
+  },
+  {
+    "name": "Madareth",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3a/Madareth.gif"
+  },
+  {
+    "name": "Magma Bubble",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c7/Magma_Bubble.gif"
+  },
+  {
+    "name": "Mahatheb",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0a/Mahatheb.gif"
+  },
+  {
+    "name": "Mahrdis",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b1/Mahrdis.gif"
+  },
+  {
+    "name": "Maior Domus",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f9/Maior_Domus.gif"
+  },
+  {
+    "name": "Malofur Mangrinder",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3b/Malofur_Mangrinder.gif"
+  },
+  {
+    "name": "Man In The Cave",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/93/Man_In_The_Cave.gif"
+  },
+  {
+    "name": "Marziel",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/1/14/Marziel.gif"
+  },
+  {
+    "name": "Massacre",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9d/Massacre.gif"
+  },
+  {
+    "name": "Maw",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/cb/Maw.gif"
+  },
+  {
+    "name": "Mawhawk",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a8/Mawhawk.gif"
+  },
+  {
+    "name": "Maxxenius",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4c/Maxxenius.gif"
+  },
+  {
+    "name": "Mazoran",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b4/Mazoran.gif"
+  },
+  {
+    "name": "Mazzinor",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f7/Mazzinor.gif"
+  },
+  {
+    "name": "Megasylvan Yselda",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6b/Megasylvan_Yselda.gif"
+  },
+  {
+    "name": "Melting Frozen Horror",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e4/Melting_Frozen_Horror.gif"
+  },
+  {
+    "name": "Mephiles",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/8/88/Mephiles.gif"
+  },
+  {
+    "name": "Michael the Stalwart",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/23/Michael_the_Stalwart.gif"
+  },
+  {
+    "name": "Mimar Haffar",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d5/Mimar_Haffar.gif"
+  },
+  {
+    "name": "Mindmasher",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c6/Mindmasher.gif"
+  },
+  {
+    "name": "Mitmah Vanguard",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9b/Mitmah_Vanguard.gif"
+  },
+  {
+    "name": "Monstor",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1b/Monstor.gif"
+  },
+  {
+    "name": "Morgaroth",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ce/Morgaroth.gif"
+  },
+  {
+    "name": "Morguthis",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/bf/Morguthis.gif"
+  },
+  {
+    "name": "Mornenion",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/84/Mornenion.gif"
+  },
+  {
+    "name": "Morshabaal",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ca/Morshabaal.gif"
+  },
+  {
+    "name": "Mozradek",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a3/Mozradek.gif"
+  },
+  {
+    "name": "Mr. Punish",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3f/Mr._Punish.gif"
+  },
+  {
+    "name": "Murcion",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/eb/Murcion.gif"
+  },
+  {
+    "name": "Neferi The Spy",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/bf/Neferi_The_Spy.gif"
+  },
+  {
+    "name": "Obujos",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/01/Obujos.gif"
+  },
+  {
+    "name": "Ocyakao",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/85/Ocyakao.gif"
+  },
+  {
+    "name": "Omrafir",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e5/Omrafir.gif"
+  },
+  {
+    "name": "Omruc",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fd/Omruc.gif"
+  },
+  {
+    "name": "Oodok Witchmaster",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8c/Oodok_Witchmaster.gif"
+  },
+  {
+    "name": "Orshabaal",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ce/Orshabaal.gif"
+  },
+  {
+    "name": "Outburst",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/36/Outburst.gif"
+  },
+  {
+    "name": "Overseer Osverger",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e9/Overseer_Osverger.gif"
+  },
+  {
+    "name": "Owin (Criatura)",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6a/Owin_%28Criatura%29.gif"
+  },
+  {
+    "name": "Phosphorus",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/16/Phosphorus.gif"
+  },
+  {
+    "name": "Phrodomo",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/cc/Phrodomo.gif"
+  },
+  {
+    "name": "Plagirath",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/fd/Plagirath.gif"
+  },
+  {
+    "name": "Plagueroot",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/2/24/Plagueroot.gif"
+  },
+  {
+    "name": "Preceptor Lazare",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/29/Preceptor_Lazare.gif"
+  },
+  {
+    "name": "Professor Maxxen",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7c/Professor_Maxxen.gif"
+  },
+  {
+    "name": "Ragiaz",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/75/Ragiaz.gif"
+  },
+  {
+    "name": "Raging Mage",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/90/Raging_Mage.gif"
+  },
+  {
+    "name": "Rahemos",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b7/Rahemos.gif"
+  },
+  {
+    "name": "Rakesh Moonfang",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/26/Rakesh_Moonfang.gif"
+  },
+  {
+    "name": "Ratmiral Blackwhiskers",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/72/Ratmiral_Blackwhiskers.gif"
+  },
+  {
+    "name": "Ravenous Hunger",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4f/Ravenous_Hunger.gif"
+  },
+  {
+    "name": "Raxias",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/15/Raxias.gif"
+  },
+  {
+    "name": "Razzagorn",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/db/Razzagorn.gif"
+  },
+  {
+    "name": "Realityquake",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/5/54/Realityquake.gif"
+  },
+  {
+    "name": "Robby the Reckless",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d7/Robby_the_Reckless.gif"
+  },
+  {
+    "name": "Rotrender",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/38/Rotrender.gif"
+  },
+  {
+    "name": "Rotspit",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/5/59/Rotspit.gif"
+  },
+  {
+    "name": "Rotworm Queen",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/be/Rotworm_Queen.gif"
+  },
+  {
+    "name": "Rukor Zad",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/03/Rukor_Zad.gif"
+  },
+  {
+    "name": "Rupture",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/12/Rupture.gif"
+  },
+  {
+    "name": "Scarlett Etzel",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/41/Scarlett_Etzel.gif"
+  },
+  {
+    "name": "Shadowpelt",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/37/Shadowpelt.gif"
+  },
+  {
+    "name": "Shadowstalker",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2f/Shadowstalker.gif"
+  },
+  {
+    "name": "Sharpclaw",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/15/Sharpclaw.gif"
+  },
+  {
+    "name": "Shlorg",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f2/Shlorg.gif"
+  },
+  {
+    "name": "Shulgrax",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/34/Shulgrax.gif"
+  },
+  {
+    "name": "Sir Baeloc",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/de/Sir_Baeloc.gif"
+  },
+  {
+    "name": "Sir Leonard",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/7/74/Sir_Leonard.gif"
+  },
+  {
+    "name": "Sir Leopold",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f6/Sir_Leopold.gif"
+  },
+  {
+    "name": "Sir Nictros",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/73/Sir_Nictros.gif"
+  },
+  {
+    "name": "Sir Valorcrest",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/32/Sir_Valorcrest.gif"
+  },
+  {
+    "name": "Sister Hetai",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/2/27/Sister_Hetai.gif"
+  },
+  {
+    "name": "Smuggler Baron Silvertoe",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/d/da/Smuggler_Baron_Silvertoe.gif"
+  },
+  {
+    "name": "Soul of Dragonking Zyrtarch",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/93/Soul_of_Dragonking_Zyrtarch.gif"
+  },
+  {
+    "name": "Srezz Yellow Eyes",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c9/Srezz_Yellow_Eyes.gif"
+  },
+  {
+    "name": "Sugar Daddy",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/27/Sugar_Daddy.gif"
+  },
+  {
+    "name": "Sugar Mommy",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a1/Sugar_Mommy.gif"
+  },
+  {
+    "name": "Tamru the Black",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/5/55/Tamru_the_Black.gif"
+  },
+  {
+    "name": "Tanjis",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/6/67/Tanjis.gif"
+  },
+  {
+    "name": "Tarbaz",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0e/Tarbaz.gif"
+  },
+  {
+    "name": "Tazhadur",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d2/Tazhadur.gif"
+  },
+  {
+    "name": "Teneshpar",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/96/Teneshpar.gif"
+  },
+  {
+    "name": "Tentugly's Head",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0d/Tentugly%27s_Head.gif"
+  },
+  {
+    "name": "Thaian",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/02/Thaian.gif"
+  },
+  {
+    "name": "Thalas",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a9/Thalas.gif"
+  },
+  {
+    "name": "Thawing Dragon Lord",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ca/Thawing_Dragon_Lord.gif"
+  },
+  {
+    "name": "The Abomination",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a7/The_Abomination.gif"
+  },
+  {
+    "name": "The Baron from Below",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d6/The_Baron_from_Below.gif"
+  },
+  {
+    "name": "The Big Bad One",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a1/The_Big_Bad_One.gif"
+  },
+  {
+    "name": "The Blazing Rose",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0b/The_Blazing_Rose.gif"
+  },
+  {
+    "name": "The Blightfather",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/0/02/The_Blightfather.gif"
+  },
+  {
+    "name": "The Brainstealer",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/05/The_Brainstealer.gif"
+  },
+  {
+    "name": "The Count Of The Core",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c1/The_Count_Of_The_Core.gif"
+  },
+  {
+    "name": "The Diamond Blossom",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/33/The_Diamond_Blossom.gif"
+  },
+  {
+    "name": "The Dread Maiden",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d5/The_Dread_Maiden.gif"
+  },
+  {
+    "name": "The Duke Of The Depths",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c8/The_Duke_Of_The_Depths.gif"
+  },
+  {
+    "name": "The Enraged Thorn Knight",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/dd/The_Enraged_Thorn_Knight.gif"
+  },
+  {
+    "name": "The Evil Eye",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/93/The_Evil_Eye.gif"
+  },
+  {
+    "name": "The False God",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ec/The_False_God.gif"
+  },
+  {
+    "name": "The Fear Feaster",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/74/The_Fear_Feaster.gif"
+  },
+  {
+    "name": "The First Dragon (Criatura)",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/bf/The_First_Dragon_%28Criatura%29.gif"
+  },
+  {
+    "name": "The Flaming Orchid",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0d/The_Flaming_Orchid.gif"
+  },
+  {
+    "name": "The Frog Prince",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/d/d0/The_Frog_Prince.gif"
+  },
+  {
+    "name": "The Gravedigger",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2f/The_Gravedigger.gif"
+  },
+  {
+    "name": "The Handmaiden",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/73/The_Handmaiden.gif"
+  },
+  {
+    "name": "The Hungerer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/ce/The_Hungerer.gif"
+  },
+  {
+    "name": "The Imperor",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b3/The_Imperor.gif"
+  },
+  {
+    "name": "The Last Lore Keeper",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/33/The_Last_Lore_Keeper.gif"
+  },
+  {
+    "name": "The Lily Of Night",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/ec/The_Lily_Of_Night.gif"
+  },
+  {
+    "name": "The Lord of the Lice",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/2b/The_Lord_of_the_Lice.gif"
+  },
+  {
+    "name": "The Manhunter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/3/36/The_Manhunter.gif"
+  },
+  {
+    "name": "The Mean Masher",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/16/The_Mean_Masher.gif"
+  },
+  {
+    "name": "The Mega Magmaoid",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3f/The_Mega_Magmaoid.gif"
+  },
+  {
+    "name": "The Monster",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3d/The_Monster.gif"
+  },
+  {
+    "name": "The Moonlight Aster",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7e/The_Moonlight_Aster.gif"
+  },
+  {
+    "name": "The Moonsnow Magnolia",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/5/57/The_Moonsnow_Magnolia.gif"
+  },
+  {
+    "name": "The Mutated Pumpkin",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7b/The_Mutated_Pumpkin.gif"
+  },
+  {
+    "name": "The Nightmare Beast",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a3/The_Nightmare_Beast.gif"
+  },
+  {
+    "name": "The Old Whopper",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c6/The_Old_Whopper.gif"
+  },
+  {
+    "name": "The Pale Count",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/11/The_Pale_Count.gif"
+  },
+  {
+    "name": "The Pale Worm",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9e/The_Pale_Worm.gif"
+  },
+  {
+    "name": "The Percht Queen",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/71/The_Percht_Queen.gif"
+  },
+  {
+    "name": "The Plasmother",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/9/98/The_Plasmother.gif"
+  },
+  {
+    "name": "The Ravager",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7a/The_Ravager.gif"
+  },
+  {
+    "name": "The Rootkraken",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/72/The_Rootkraken.gif"
+  },
+  {
+    "name": "The Sandking",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/79/The_Sandking.gif"
+  },
+  {
+    "name": "The Scourge of Oblivion",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/43/The_Scourge_of_Oblivion.gif"
+  },
+  {
+    "name": "The Shatterer",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/5/56/The_Shatterer.gif"
+  },
+  {
+    "name": "The Souldespoiler",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/d/dc/The_Souldespoiler.gif"
+  },
+  {
+    "name": "The Source Of Corruption",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/95/The_Source_Of_Corruption.gif"
+  },
+  {
+    "name": "The Time Guardian",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f6/The_Time_Guardian.gif"
+  },
+  {
+    "name": "The Unarmored Voidborn",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/03/The_Unarmored_Voidborn.gif"
+  },
+  {
+    "name": "The Unwelcome",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/bf/The_Unwelcome.gif"
+  },
+  {
+    "name": "The Voice of Ruin",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8b/The_Voice_of_Ruin.gif"
+  },
+  {
+    "name": "The Welter",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a3/The_Welter.gif"
+  },
+  {
+    "name": "The Winter Bloom",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/76/The_Winter_Bloom.gif"
+  },
+  {
+    "name": "Timira the Many-Headed",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/eb/Timira_the_Many-Headed.gif"
+  },
+  {
+    "name": "Tropical Desolator",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/1/13/Tropical_Desolator.gif"
+  },
+  {
+    "name": "Twisterror",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/0/08/Twisterror.gif"
+  },
+  {
+    "name": "Tyrn",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/7/7c/Tyrn.gif"
+  },
+  {
+    "name": "Tzumrah the Dazzler",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/5/51/Tzumrah_the_Dazzler.gif"
+  },
+  {
+    "name": "Unaz the Mean",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/6/6e/Unaz_the_Mean.gif"
+  },
+  {
+    "name": "Urmahlullu the Weakened",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/0/0d/Urmahlullu_the_Weakened.gif"
+  },
+  {
+    "name": "Ushuriel",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/6/68/Ushuriel.gif"
+  },
+  {
+    "name": "Utua Stone Sting",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/e/e8/Utua_Stone_Sting.gif"
+  },
+  {
+    "name": "Vashresamun",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4b/Vashresamun.gif"
+  },
+  {
+    "name": "Vemiath",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/8/8e/Vemiath.gif"
+  },
+  {
+    "name": "Vladrukh",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9e/Vladrukh.gif"
+  },
+  {
+    "name": "Vok the Freakish",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4b/Vok_the_Freakish.gif"
+  },
+  {
+    "name": "Warlord Ruzad",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/4/4f/Warlord_Ruzad.gif"
+  },
+  {
+    "name": "White Pale",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/ab/White_Pale.gif"
+  },
+  {
+    "name": "Willi Wasp",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/f/f1/Willi_Wasp.gif"
+  },
+  {
+    "name": "World Devourer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/a/a8/World_Devourer.gif"
+  },
+  {
+    "name": "Wrathful Archivist",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/9/9d/Wrathful_Archivist.gif"
+  },
+  {
+    "name": "Xenia",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/1f/Xenia.gif"
+  },
+  {
+    "name": "Xogixath",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/2/22/Xogixath.gif"
+  },
+  {
+    "name": "Yaga the Crone",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/2/25/Yaga_the_Crone.gif"
+  },
+  {
+    "name": "Yakchal",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/4/41/Yakchal.gif"
+  },
+  {
+    "name": "Yirkas Blue Scales",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/7/73/Yirkas_Blue_Scales.gif"
+  },
+  {
+    "name": "Zamulosh",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b1/Zamulosh.gif"
+  },
+  {
+    "name": "Zarabustor",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b0/Zarabustor.gif"
+  },
+  {
+    "name": "Zevelon Duskbringer",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/1/15/Zevelon_Duskbringer.gif"
+  },
+  {
+    "name": "Zomba",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/bb/Zomba.gif"
+  },
+  {
+    "name": "Zorvorax",
+    "category": "Archfoe",
+    "target": 60,
+    "image_url": "https://www.tibiawiki.com.br/images/3/3f/Zorvorax.gif"
+  },
+  {
+    "name": "Zugurosh",
+    "category": "Bane",
+    "target": 300,
+    "image_url": "https://www.tibiawiki.com.br/images/c/c2/Zugurosh.gif"
+  },
+  {
+    "name": "Zulazza the Corruptor",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/ba/Zulazza_the_Corruptor.gif"
+  },
+  {
+    "name": "Zushuka",
+    "category": "Nemesis",
+    "target": 5,
+    "image_url": "https://www.tibiawiki.com.br/images/b/b5/Zushuka.gif"
+  },
+  {
+    "name": "Midnight Panther",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Midnight_Panther.gif"
+  },
+  {
+    "name": "Yeti",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Yeti.gif"
+  },
+  {
+    "name": "Undead Cavebear",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Undead_Cavebear.gif"
+  },
+  {
+    "name": "Draptor",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Draptor.gif"
+  },
+  {
+    "name": "Crustacea Gigantica",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Crustacea_Gigantica.gif"
+  },
+  {
+    "name": "Albino Dragon",
+    "category": "Bestiary",
+    "target": 5,
+    "image_url": "https://cdn.rubinottools.com/bosses/Albino_Dragon.gif"
+  }
+]

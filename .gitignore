@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.*
+data/*
+!data/catalog.json
+cloud/dist/
+cloud/*.generated.mjs
