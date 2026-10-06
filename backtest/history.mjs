@@ -5,6 +5,7 @@ const H=3600000,DAY=86400000;
 const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&['appearance','kill'].includes(e.eventType);
 const precise=e=>(e.evidence||[]).some(x=>(['minute','hour'].includes(x.precision)||x.manual&&x.detail?.correction)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const knowledgeAt=e=>Math.max(Number(e.updatedAt)||0,...(e.evidence||[]).map(x=>Math.max(Number(x.processedAt)||0,Number(x.collectedAt)||0,Number(x.reportedAt)||0)));
 const q=(a,p)=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),x=(s.length-1)*p,i=Math.floor(x),f=x-i;return s[i]+((s[i+1]??s[i])-s[i])*f;};
 function rowsFor(events,boss,world){return events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);}
 function methodsFor(prior){
@@ -28,7 +29,7 @@ export function runHistoricalBacktest(events,world,{minTrain=5,maxPerBoss=5000}=
  for(const boss of bosses){
   const rows=rowsFor(events,boss,world).slice(-maxPerBoss),results=[];
   for(let i=minTrain;i<rows.length;i++){
-   const prior=rows.slice(0,i),actual=rows[i],baseMethods=methodsFor(prior),adaptive=predictAdaptive(prior,boss,world,models,actual.estimatedAt-1);
+   const actual=rows[i],prior=rows.slice(0,i).filter(e=>!knowledgeAt(e)||knowledgeAt(e)<actual.estimatedAt),baseMethods=methodsFor(prior),adaptive=predictAdaptive(prior,boss,world,models,actual.estimatedAt-1);
    const priorCalibration=calibrationHistory.filter(x=>(x.resolvedAt||0)<actual.estimatedAt);
    let calibrated=null;if(adaptive.status==='ready'){calibrated=calibrateConfidence(adaptive.confidence,priorCalibration,world,boss);if(calibrated.samples<20)calibrated=calibrateConfidence(adaptive.confidence,priorCalibration,world,null);}
    const methods=[...baseMethods];

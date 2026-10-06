@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-export const PREDICTION_ENGINE_VERSION='4.2.0';
+export const PREDICTION_ENGINE_VERSION='4.3.0';
 export const MODEL_FAMILY_VERSION='adaptive-ensemble-v4.2';
 export function datasetVersion(events,boss,world){
  const rows=events.filter(e=>e.boss===boss&&e.world===world&&/^confirmed_/.test(e.status)&&e.eventType!=='absence').sort((a,b)=>a.estimatedAt-b.estimatedAt||String(a.id).localeCompare(String(b.id)));

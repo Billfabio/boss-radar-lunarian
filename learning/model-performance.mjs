@@ -38,13 +38,13 @@ export function rebuildBossModel(forecasts,models,boss,world){
  for(const forecast of rows){for(const method of forecast.methods||[]){if(!Number.isFinite(method.actualErrorMinutes))continue;learnMethodResult(models,boss,world,method.name,method.actualErrorMinutes,!!method.hit,forecast.resolvedAt);}const model=ensureModel(models,boss,world);model.resolved++;model.lastResolvedAt=Math.max(model.lastResolvedAt||0,forecast.resolvedAt||0);}
  return ensureModel(models,boss,world);
 }
-export function resolveForecasts(forecasts,event,models){
- if(!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt))return [];
+export function resolveForecasts(forecasts,event,models,{controlled=false}={}){
+ if(!/^confirmed_/.test(event.status)||!Number.isFinite(event.estimatedAt)||event.anomaly||['CONFLITANTE','SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(event.qualityStatus))return [];
  const candidates=forecasts.filter(f=>!f.resolvedAt&&f.boss===event.boss&&f.world===event.world&&f.baseEventId&&f.baseEventId!==event.id&&f.baseEventAt<event.estimatedAt&&f.createdAt<event.estimatedAt);
  if(!candidates.length)return [];
  const forecast=candidates.sort((a,b)=>b.baseEventAt-a.baseEventAt||a.createdAt-b.createdAt)[0];
  forecast.resolvedAt=Date.now();recalculateForecastOutcome(forecast,event);
- for(const method of forecast.methods||[])if(Number.isFinite(method.predictedAt)&&Number.isFinite(method.actualErrorMinutes))learnMethodResult(models,event.boss,event.world,method.name,method.actualErrorMinutes,!!method.hit,forecast.resolvedAt);
+ if(!controlled)for(const method of forecast.methods||[])if(Number.isFinite(method.predictedAt)&&Number.isFinite(method.actualErrorMinutes))learnMethodResult(models,event.boss,event.world,method.name,method.actualErrorMinutes,!!method.hit,forecast.resolvedAt);
  const model=ensureModel(models,event.boss,event.world);model.resolved++;model.lastResolvedAt=forecast.resolvedAt;
  return [forecast];
 }

@@ -2,13 +2,14 @@ import {adaptiveMethodWeight} from '../learning/model-performance.mjs';
 import {detectDrift} from '../learning/drift.mjs';
 import {probabilityDistribution} from './distribution.mjs';
 import {predictionReadiness} from './abstention.mjs';
+import {eventIntervals,quantile} from '../mlops/statistics.mjs';
 const DAY=86400000,HOUR=3600000,clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-const q=(arr,p)=>{if(!arr.length)return null;const a=[...arr].sort((x,y)=>x-y),x=(a.length-1)*p,i=Math.floor(x),f=x-i;return a[i]+((a[i+1]??a[i])-a[i])*f;};
+const q=quantile;
 const median=a=>q(a,.5);
 const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&['appearance','kill'].includes(e.eventType);
 const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
 const rowsFor=(events,boss,world)=>events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
-const intervals=rows=>rows.slice(1).map((e,i)=>e.estimatedAt-rows[i].estimatedAt).filter(x=>x>HOUR&&x<180*DAY);
+const intervals=eventIntervals;
 function sourceUsage(rows){
  const map=new Map();
  for(const event of rows)for(const x of event.evidence||[]){
@@ -57,6 +58,7 @@ function weekdayMethod(rows,intervalCenter){
  return {name:'weekday',predictedAt:candidate,samples:recent.length,concentration:share};
 }
 export function predictAdaptive(events,boss,world,models={},now=Date.now()){
+ events=events.filter(e=>e.estimatedAt<=now);
  const rows=rowsFor(events,boss,world),allBossRows=events.filter(e=>e.boss===boss&&e.world===world&&['appearance','kill'].includes(e.eventType)),sourcesUsed=sourceUsage(rows),excluded={anomalies:allBossRows.filter(e=>e.anomaly).length,conflicts:allBossRows.filter(e=>e.qualityStatus==='CONFLITANTE').length,suspect:allBossRows.filter(e=>['SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(e.qualityStatus)).length};
  if(rows.length<5)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:Math.min(49,rows.length*8),scoreLabel:'DADOS INSUFICIENTES',methods:[],sourceUsage:sourcesUsed,excluded,explain:[`Apenas ${rows.length} aparições confirmadas e aprovadas pela camada de qualidade.`]};
  const hist=intervalMethod(rows,'historical'),recent=intervalMethod(rows,'recent');if(!hist)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:35,scoreLabel:'DADOS INSUFICIENTES',methods:[],sourceUsage:sourcesUsed,excluded,explain:['Histórico insuficiente para estimar intervalo.']};

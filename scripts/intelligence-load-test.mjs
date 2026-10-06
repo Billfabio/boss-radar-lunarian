@@ -12,12 +12,13 @@ assert.equal(predictions.length,bosses);assert.ok(inferenceMs<5000,'Construção
 const server=http.createServer((req,res)=>{if(req.url!=='/snapshot'){res.writeHead(404);res.end();return;}res.writeHead(200,{'content-type':'application/json','content-length':payload.length,'cache-control':'no-store'});res.end(payload);});
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
 const port=server.address().port;
+const requestErrors={};
 
 function oneRequest(){
  return new Promise(resolve=>{
   const started=performance.now();
   const req=http.get({host:'127.0.0.1',port,path:'/snapshot',agent:false},res=>{let bytes=0;res.on('data',c=>bytes+=c.length);res.on('end',()=>resolve({ok:res.statusCode===200&&bytes===payload.length,ms:performance.now()-started,bytes}));});
-  req.setTimeout(5000,()=>req.destroy(new Error('timeout')));req.on('error',()=>resolve({ok:false,ms:performance.now()-started,bytes:0}));
+  req.setTimeout(5000,()=>req.destroy(new Error('timeout')));req.on('error',e=>{const key=e.code||e.message;requestErrors[key]=(requestErrors[key]||0)+1;resolve({ok:false,ms:performance.now()-started,bytes:0});});
  });
 }
 const percentile=(a,p)=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),i=Math.min(s.length-1,Math.floor((s.length-1)*p));return Math.round(s[i]*10)/10;};
@@ -31,6 +32,7 @@ async function runLevel(users){
 const rows=[];for(const users of [10,100,1000,10000])rows.push(await runLevel(users));
 await new Promise(resolve=>server.close(resolve));
 
+if(rows.some(x=>x.failures))console.error(JSON.stringify({kind:'load-benchmark-failure-details',requestErrors,rows},null,2));
 assert.ok(rows.every(x=>x.failures===0),'Benchmark HTTP registrou falhas');
 assert.ok(rows.find(x=>x.virtualUsers===1000).p95Ms<1000,'p95 excedeu 1s para 1.000 clientes virtuais');
 assert.ok(rows.find(x=>x.virtualUsers===10000).p95Ms<2000,'p95 excedeu 2s para 10.000 clientes virtuais');

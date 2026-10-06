@@ -46,7 +46,8 @@ let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
 const sessionToken = randomBytes(32).toString('hex');
-const heavyQueue=new TaskQueue({concurrency:1,maxPending:8});
+state.pipelineDeadLetters ||= [];
+const heavyQueue=new TaskQueue({concurrency:1,maxPending:8,deadLetters:state.pipelineDeadLetters,onDeadLetter:()=>persist()});
 const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSerializeMs:0,lastStateMs:0,lastRefreshMs:0};
 const storageHealth={lastSuccessAt:0,lastError:'',lastFailureAt:0,recoveryCount:0};
 let persistPromise=null,pendingSnapshot=null;
@@ -251,6 +252,9 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
       if(url.pathname==='/api/intelligence/backtest'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;const result=await heavyQueue.enqueue('backtest:'+world,async()=>intelligence.backtest(world));return json(res,200,result);}
       if(url.pathname==='/api/intelligence/simulate'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;if(typeof input.boss!=='string'||input.boss.length>140)throw new Error('Boss inválido');return json(res,200,intelligence.simulate(input.boss,world));}
+      if(url.pathname==='/api/intelligence/experiment'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;if(!['robust_interval','empirical_survival'].includes(input.modelId))throw new Error('Modelo inválido');return json(res,200,await heavyQueue.enqueue('experiment:'+world,()=>intelligence.experiment(world,input.modelId),{payload:{world,modelId:input.modelId}}));}
+      if(url.pathname==='/api/intelligence/retry'){const row=state.pipelineDeadLetters.find(x=>x.id===input.id&&x.status==='failed');if(!row||!row.name.startsWith('experiment:'))throw new Error('Falha não reprocessável por esta operação');const result=await heavyQueue.enqueue(row.name,()=>intelligence.experiment(row.payload.world,row.payload.modelId),{payload:row.payload});row.status='reprocessed';row.reprocessedAt=Date.now();await persist();return json(res,200,result);}
+      if(url.pathname==='/api/intelligence/replay'){if(typeof input.forecastId!=='string'||input.forecastId.length>200)throw new Error('Previsão inválida');return json(res,200,intelligence.replay(input.forecastId));}
       if(url.pathname==='/api/refresh') { await refresh(true); await poll(); return json(res,200,{ok:true}); }
       if(url.pathname==='/api/character/refresh') {await refreshCharacter(input.name||CHARACTER_NAME,true);return json(res,200,{ok:true});}
       if(url.pathname==='/api/characters/add') {
@@ -267,6 +271,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/group-image'){const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))throw new Error('Imagem inválida');const image=state.whatsapp.images.find(i=>i.id===id);if(!image)return json(res,404,{error:'Imagem não encontrada'});const bytes=await readFile(join(DATA,'group-images',id));res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(bytes);return;}
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
     if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',storage:storageHealth,errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
+    if(url.pathname==='/api/intelligence/mlops')return json(res,200,intelligence.mlops(state.settings.world));
     if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
     if(url.pathname==='/api/characters')return json(res,200,{names:state.characters});
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}

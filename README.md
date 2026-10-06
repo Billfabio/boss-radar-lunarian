@@ -1,5 +1,7 @@
 # Boss Radar · RubinOT
 
+> Infraestrutura MLOps, implementação e limites: [RELATORIO-MLOPS.md](RELATORIO-MLOPS.md). A Central de Inteligência possui registro de modelos, datasets reproduzíveis, modelos Shadow e aprendizado controlado. Modelos novos exigem avaliação temporal antes de qualquer promoção.
+
 > Auditoria de confiabilidade atual: [RELATORIO-CONFIABILIDADE-V42.md](RELATORIO-CONFIABILIDADE-V42.md).
 
 > Camada de confiabilidade da IA: consulte [RELATORIO-CONFIABILIDADE-IA.md](RELATORIO-CONFIABILIDADE-IA.md).
