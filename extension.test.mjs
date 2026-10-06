@@ -96,3 +96,36 @@ test('one reporter repeating messages cannot mimic independent confirmations',()
  const c1=[],c2=[];for(const e of one)mergeEvidence(c1,e);for(const e of many)mergeEvidence(c2,e);enrichCandidate(c1[0],one);enrichCandidate(c2[0],many);
  assert.equal(c1[0].participants,1);assert.equal(c2[0].participants,4);assert.ok(c2[0].score>c1[0].score);
 });
+
+
+test('processed message cache is bounded, deduplicated and expires old entries',async()=>{
+ const g=await classic('./edge-extension/collector-core.js'),core=g.BossCollectorCore,now=10*86400000,rows=[];
+ for(let i=0;i<12000;i++)rows.push({key:'k'+i,at:now-i*1000});
+ rows.push({key:'k1',at:now+1});
+ const out=core.pruneProcessed(rows,now+2,24*3600000,10000);
+ assert.equal(out.length,10000);assert.equal(out[0].key,'k1');assert.equal(new Set(out.map(x=>x.key)).size,out.length);
+ assert.equal(core.pruneProcessed([{key:'old',at:0}],now,1000,10).length,0);
+});
+
+test('question or negation alone stays as evidence and cannot open a boss candidate',()=>{
+ const candidates=[],question={id:'q',world:'Lunarian',messageTimestamp:1000,authorHash:'a'.repeat(64),contextClassification:'QUESTION',bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}]};
+ const neg={...question,id:'n',messageTimestamp:1001,contextClassification:'NEGATION'};
+ assert.equal(mergeEvidence(candidates,question),null);assert.equal(mergeEvidence(candidates,neg),null);assert.equal(candidates.length,0);
+ const positive={...question,id:'p',messageTimestamp:1002,contextClassification:'POSSIBLE_REPORT'};const c=mergeEvidence(candidates,positive);assert.ok(c);
+ mergeEvidence(candidates,{...question,id:'q2',messageTimestamp:1003});assert.equal(c.evidenceIds.length,2);
+});
+
+test('disconnect revokes collector key and keeps revocation audit without losing history',async()=>{
+ const state={groupChecks:[],whatsapp:{}},dict=()=>buildBossDictionary({catalog:[{name:'Ferumbras'}]});
+ const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
+ const pair=await sync.control('/api/whatsapp/pair-code',{}),origin='chrome-extension://'+'g'.repeat(32);
+ const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
+ const paired=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.5.0'}),collectorId=paired.collectorId;
+ await sync.control('/api/whatsapp/disconnect',{});assert.equal(sync.publicState().connected,false);assert.equal(sync.publicState().revokedCollectors,1);assert.equal(state.whatsapp.revokedCollectors[0].collectorId,collectorId);
+ const old=await call('/extension/config',{group:'Lunarian'},paired.key);assert.notEqual(old.status,200);
+});
+
+test('extension retry uses cryptographic jitter instead of fixed retry storm',async()=>{
+ const background=await readFile(new URL('./edge-extension/background.js',import.meta.url),'utf8');
+ assert.match(background,/crypto\.getRandomValues/);assert.match(background,/jitterFactor/);assert.doesNotMatch(background,/Math\.random\s*\(/);
+});
