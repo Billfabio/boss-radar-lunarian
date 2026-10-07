@@ -47,7 +47,7 @@ export function qualityGate(champion,candidate,{temporalPassed=false,leakagePass
  return {passed:reasons.length===0,reasons,samples:pairs.length,champion:A,candidate:B,lowerImprovement95:lower,policy:{primaryMetric:'paired_mae_improvement',minSamples,minimumGain:.05,minAbsoluteLowerCiMinutes:1,maxBossRegression:.02,maxP95Regression:.05,maxTailOver180Increase:.02,maxLatencyMs:250,calibrationMustNotWorsen:true}};
 }
 export function datasetSnapshot(store,features,context={}){
- const body={schema:1,featureVersion:features.version,asOf:features.asOf,world:features.values.world,boss:features.values.boss,events:structuredClone(features.rows),features:structuredClone(features.values),context:structuredClone(context)};
+ const body={schema:1,featureVersion:features.version,asOf:features.asOf,world:features.values.world,boss:features.values.boss,events:structuredClone(features.rows),contextEvents:structuredClone(features.contextRows||[]),features:structuredClone(features.values),context:structuredClone(context)};
  const id='dataset_'+digest(body);if(!store[id])store[id]={id,hash:digest(body),...body};return store[id];
 }
 export function verifyDataset(dataset){const {id,hash,...body}=dataset;return id==='dataset_'+digest(body)&&hash===digest(body);}
