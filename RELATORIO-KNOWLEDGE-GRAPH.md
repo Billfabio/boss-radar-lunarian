@@ -100,6 +100,24 @@ A camada reaproveita proveniência temporal de evidências para medir:
 
 Dependências continuam sujeitas à governança existente de fontes; nenhuma relação de fonte é ativada automaticamente.
 
+## Reporter Relationship Graph
+
+O Investigation Engine também produz um grafo comunitário estritamente pseudonimizado.
+
+Ele utiliza somente informações necessárias para avaliar independência da evidência:
+
+- reporter hash truncado para exibição;
+- ordem temporal entre reports;
+- coocorrência em casos;
+- similaridade por hash de conteúdo normalizado;
+- lag médio/mediano;
+- bosses associados aos casos;
+- tamanho da amostra.
+
+Quando há suporte suficiente, uma aresta pode ser marcada como `PROPAGATION_CANDIDATE`. Isso significa somente que existe um padrão temporal compatível com propagação de informação; não prova cópia, coordenação intencional ou causalidade.
+
+Nenhum peso de produção é aplicado automaticamente e nenhum dado pessoal adicional é criado.
+
 ## Server State
 
 Snapshots de estado incluem, quando conhecidos naquele instante:
