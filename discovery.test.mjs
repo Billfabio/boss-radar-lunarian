@@ -13,6 +13,7 @@ import {recomputeEvent} from './deduplication/events.mjs';
 import {createIntelligence} from './intelligence/service.mjs';
 import {discoveryHtml,historicalHtml} from './discovery-ui.mjs';
 import {spawnDistribution} from './discovery/distribution.mjs';
+import {predictionErrorRelationshipAnalysis} from './discovery/context-analysis.mjs';
 import {reviewCandidate,evaluateSources} from './discovery/service.mjs';
 import {learnFromEvent} from './learning/reliability.mjs';
 import {digest} from './mlops/feature-store.mjs';
@@ -101,5 +102,12 @@ test('Before-Spawn contrastive signals enter Feature Store only as governed hypo
  assert.ok(run.beforeSpawnFeatures>0);assert.ok(feature);assert.equal(feature.status,'DISCOVERED');assert.equal(feature.productionEligible,false);assert.ok(feature.metrics.lift>1.5);assert.ok(feature.lineage.positive.length>=20);assert.ok(Number.isFinite(feature.medianDelayHours));assert.equal(d.graphHealth.orphanFeatures,0);
  assert.ok(hypothesis);assert.equal(hypothesis.status,'UNVALIDATED_HYPOTHESIS');assert.equal(hypothesis.modelId,'graph_context_interval');assert.equal(hypothesis.origin,'before_spawn_contrastive');assert.equal(hypothesis.eligibleForExperiment,true);
  const q=queryTemporalKnowledge(s,'World',{kind:'before',boss:'B'},asOf);assert.ok(Array.isArray(q.answer.relationships));assert.ok(q.answer.contrastiveSignals.some(x=>x.sourceBoss==='A'));assert.ok(q.answer.featureHypotheses.some(x=>x.featureId===feature.id));
+});
+
+test('Prediction Error graph compares contexts against background without causal or production claims',()=>{
+ const s=intelligence();s.forecasts=[];s.mlops={errors:{}};
+ for(let i=0;i<80;i++){const risky=i<40,id='errf'+i,resolvedAt=T+(i+1)*H,errorMinutes=risky?(i<30?240:40):(i<45?240:40);s.forecasts.push({id,boss:'Boss',world:'World',resolvedAt,activeModel:risky?'risky_model':'stable_model',drift:{score:risky?55:10},noveltySafety:{status:risky?'NOVEL_STATE':'KNOWN_STATE'},graphContext:{graphApplied:false},operationalSafety:{level:'NORMAL'},selfCritique:{reasons:risky?['drift']:[]}});s.mlops.errors[id]={id:'error_'+id,forecastId:id,boss:'Boss',world:'World,errorMinutes,resolvedAt,causes:risky?['drift']:['unexplained_interval_variation']};}
+ const d=predictionErrorRelationshipAnalysis(s,'World',T+100*H),r=d.relationships.find(x=>x.dimension==='model'&&x.value==='risky_model');
+ assert.equal(d.status,'MEASURED');assert.equal(d.samples,80);assert.ok(d.baselineLargeErrorRate>.4&&d.baselineLargeErrorRate<.5);assert.ok(r);assert.equal(r.status,'CANDIDATE_ASSOCIATION');assert.ok(r.riskRatio>3);assert.ok(r.test.q<=.05);assert.equal(r.productionEligible,false);assert.equal(r.causalityProven,false);assert.equal(r.direction,'HIGHER_ERROR_RISK');assert.ok(r.lineage.largeErrorForecastIds.length>=20);
 });
 
