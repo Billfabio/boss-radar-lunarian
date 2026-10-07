@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {createWhatsAppSync} from './whatsapp-sync.mjs';
 import {buildBossDictionary} from './whatsapp-dictionary.mjs';
 import {mergeEvidence,enrichCandidate,latencyPercentiles} from './whatsapp-community.mjs';
+import {buildStoredZip,EXTENSION_PACKAGE_FILES} from './extension-package.mjs';
 
 async function classic(path){const code=await readFile(new URL(path,import.meta.url),'utf8'),ctx={globalThis:{},Date,Map,Set,Intl,console};vm.createContext(ctx);vm.runInContext(code,ctx);return ctx.globalThis;}
 const dictionary={version:'v1',entries:[{boss_id:'feru',name:'Ferumbras',aliases:['feru']},{boss_id:'orsh',name:'Orshabaal',aliases:['orsha']}]};
@@ -84,9 +85,10 @@ test('heartbeat records collection gaps and distinguishes browser uptime from Lu
  const p=sync.publicState();assert.equal(p.health.browserConnected,true);assert.equal(p.health.lunarianDetected,true);assert.ok(p.coverage.gaps.some(g=>g.reason==='COLLECTION_GAP'));assert.ok(p.coverage.gaps.some(g=>g.reason==='DOM_COLLECTION_GAP'));
 });
 
-test('downloadable extension zip embeds the current packaged source files exactly',async()=>{
- const zip=await readFile(new URL('./boss-radar-extension.zip',import.meta.url)),files=['manifest.json','adapter.js','collector-core.js','background.js','content.js','popup.html','popup.js','popup.css','LEIA-ME.md'];
- for(const name of files){const source=await readFile(new URL('./edge-extension/'+name,import.meta.url));assert.ok(zip.indexOf(source)>=0,'ZIP desatualizado: '+name);}
+test('downloadable extension package is generated from the current source files exactly',async()=>{
+ const entries=[];for(const name of EXTENSION_PACKAGE_FILES)entries.push({name,content:await readFile(new URL('./edge-extension/'+name,import.meta.url))});
+ const zip=buildStoredZip(entries);assert.ok(zip.length>0);
+ for(const entry of entries)assert.ok(zip.indexOf(entry.content)>=0,'ZIP gerado sem o conteúdo atual: '+entry.name);
 });
 
 
