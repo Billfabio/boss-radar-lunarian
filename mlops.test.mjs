@@ -29,7 +29,7 @@ test('Poisoning detector ignores day-only repetition and flags precise source bu
 test('Feature importance is measured only after enough temporal folds',()=>{assert.equal(featureImportance(rows(20),'Boss','World',T+3000*H).status,'insufficient');const r=featureImportance(rows(60),'Boss','World',T+6000*H);assert.equal(r.status,'no_positive_gain');assert.equal(r.productionEligible,false);assert.ok(r.features.every(x=>x.importance==null));});
 test('Canary selection is deterministic and regression rolls back',()=>{const s=intel();ensureMLOps(s);s.mlops.rollouts['World|boss']={id:'u',status:'canary',models:{candidate:true},percentage:5,stage:0,stageStartedAt:1,gate:{champion:{maeMinutes:10,windowAccuracy:1}}};assert.deepEqual(modelsForPrediction(s,'Boss','World','same'),modelsForPrediction(s,'Boss','World','same'));s.forecasts=Array.from({length:20},(_,i)=>({boss:'Boss',world:'World',createdAt:2,resolvedAt:3,errorMinutes:20,windowHit:false,rollout:{id:'u',selected:true}}));assert.equal(monitorCanary(s,'Boss','World',4).status,'rolled_back');assert.equal(modelsForPrediction(s,'Boss','World','same').models,s.models);});
 test('Queue retries only declared idempotent jobs and preserves dead letters while processing recovers',async()=>{const letters=[],q=new TaskQueue({deadLetters:letters});assert.throws(()=>q.enqueue('unsafe',async()=>{}, {maxAttempts:2}),/idempotente/);let attempts=0;await assert.rejects(q.enqueue('bad',async()=>{attempts++;throw new Error('failure');},{idempotent:true,maxAttempts:3,payload:{eventId:'e'}}));assert.equal(attempts,3);assert.equal(letters[0].attempts,3);assert.equal(letters[0].payload.eventId,'e');assert.equal(await q.enqueue('good',async()=>42),42);assert.equal(q.stats().deadLetterCount,1);});
-test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,2);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
+test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,3);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
 
 
 function labBacktest(n=120){
@@ -71,7 +71,7 @@ test('AI Lab Canary auto-rolls back on severe real-world regression',()=>{
  const result=monitorLabCanary(s,'Boss','World',1004);assert.equal(result.status,'ROLLED_BACK');assert.equal(exp.status,'REJECTED');
 });
 test('AI Lab dashboard exposes sample-aware leaderboard and model card without fictitious metrics',()=>{
- const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.1.0');
+ const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.2.0');
 });
 
 
@@ -93,12 +93,21 @@ test('AI Lab robustness probe is deterministic and explicitly not an accuracy cl
 });
 
 
-test('AI Lab Feature Store v1.1 exposes source coverage only when historically supplied and derives non-causal regime signal',()=>{
+test('AI Lab Feature Store v1.2 exposes source coverage only when historically supplied and derives non-causal regime signal',()=>{
  const es=rows(30),asOf=availableAt(es.at(-1))+1,a=buildFeatures(es,'Boss','World',asOf),b=buildFeatures(es,'Boss','World',asOf,{sourceCoverage:.73});
- assert.equal(a.version,'1.1.0');assert.equal(a.values.sourceCoverage,null);assert.equal(b.values.sourceCoverage,.73);assert.ok(['STABLE','TRANSITION','HIGH_DRIFT'].includes(b.values.regimeSignal));
+ assert.equal(a.version,'1.2.0');assert.equal(a.values.sourceCoverage,null);assert.equal(b.values.sourceCoverage,.73);assert.ok(['STABLE','TRANSITION','HIGH_DRIFT'].includes(b.values.regimeSignal));
 });
 
 test('AI Lab robustness includes missing-source and conflict scenarios without claiming accuracy',()=>{
  const s=intel(40);ensureMLOps(s);const d=aiLabDashboard(s,'World',T+5000*H),names=new Set((d.robustness.rows||[]).flatMap(x=>x.scenarios.map(y=>y.scenario)));
  assert.equal(d.robustness.accuracyNotMeasured,true);assert.ok(names.has('sources_offline'));assert.ok(names.has('source_quality_50pct'));assert.ok(names.has('conflict_high_drift'));
+});
+
+
+test('Graph context features are as-known-at safe and drive only the experiment challenger',()=>{
+ const es=rows(12),last=es.at(-1).estimatedAt,srcAt=last+2*H,asOf=last+5*H,src=event(99,{id:'source-event',boss:'Source',estimatedAt:srcAt,startAt:srcAt,endAt:srcAt,updatedAt:srcAt+60000});
+ src.evidence=[{...es[0].evidence[0],evidenceId:'source-evidence',boss:'Source',estimatedAt:srcAt,startAt:srcAt,endAt:srcAt,collectedAt:srcAt+60000,reportedAt:srcAt+60000,processedAt:srcAt+60000}];
+ const f=buildFeatures([...es,src],'Boss','World',asOf,{relatedBoss:'Source'});assert.equal(f.values.relatedBossAfterLastTarget,true);assert.ok(f.values.relatedBossHoursAgo>2.9&&f.values.relatedBossHoursAgo<3.1);assert.ok(f.contextRows.some(x=>x.id==='source-event'));
+ const c=candidatePrediction('graph_context_interval',f,{sourceBoss:'Source',windowHours:6,windowStartHours:0,medianDelayHours:8,graphWeight:.35,direction:'POSITIVE'});assert.equal(c.parameters.graphApplied,true);assert.ok(c.predictedAt>=asOf);
+ const late=structuredClone(src);late.id='late-source';late.updatedAt=asOf+H;late.evidence[0].evidenceId='late-source-evidence';late.evidence[0].processedAt=asOf+H;late.evidence[0].collectedAt=asOf+H;late.evidence[0].reportedAt=asOf+H;const safe=buildFeatures([...es,late],'Boss','World',asOf,{relatedBoss:'Source'});assert.equal(safe.values.relatedBossHoursAgo,null);
 });
