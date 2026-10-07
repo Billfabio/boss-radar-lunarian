@@ -72,6 +72,16 @@ function similarStates(d,k,world,asOf,limit=20){
  const current=stateAt(d,world,asOf),rows=k.snapshots.filter(x=>x.world===world&&x.capturedAsKnownAt<asOf-1).map(x=>({...x,similarity:similarity(current,x.state)})).sort((a,b)=>b.similarity-a.similarity).slice(0,limit),best=rows[0]?.similarity??null,novelty=best==null?null:1-best;
  return {current,noveltyScore:round(novelty,4),status:rows.length<10?'INSUFFICIENT_HISTORY':novelty>=.45?'NOVEL_STATE':'KNOWN_STATE',similarStates:rows.map(x=>({id:x.id,eventId:x.eventId,eventTime:x.eventTime,availableAt:x.availableAt,similarity:round(x.similarity,4),state:x.state}))};
 }
+export function noveltyAssessment(intel,world,asOf=Date.now(),limit=20){
+ const d=intel.discovery,k=ensureTemporalKnowledge(d,asOf),result=similarStates(d,k,world,asOf,limit);
+ return {...result,samples:result.similarStates.length,policy:{minHistoricalStates:10,novelStateThreshold:.45,maxConfidencePenalty:40,minConfidenceCap:60}};
+}
+export function noveltyConfidenceGuard(assessment,currentConfidence){
+ const confidence=Number(currentConfidence);if(!Number.isFinite(confidence))return {applied:false,confidenceCap:null,adjustedConfidence:currentConfidence,adjustment:0,reason:'confidence_unavailable'};
+ if(!assessment||assessment.status!=='NOVEL_STATE'||assessment.samples<10||!Number.isFinite(assessment.noveltyScore))return {applied:false,confidenceCap:null,adjustedConfidence:confidence,adjustment:0,reason:assessment?.status==='INSUFFICIENT_HISTORY'?'insufficient_historical_states':'state_not_novel'};
+ const p=assessment.policy||{},threshold=Number(p.novelStateThreshold)||.45,minCap=Number(p.minConfidenceCap)||60,maxPenalty=Number(p.maxConfidencePenalty)||40,scale=Math.max(0,Math.min(1,(assessment.noveltyScore-threshold)/Math.max(.01,1-threshold))),cap=Math.max(minCap,Math.round(100-maxPenalty*(.5+.5*scale))),adjusted=Math.min(confidence,cap);
+ return {applied:adjusted<confidence,confidenceCap:cap,adjustedConfidence:adjusted,adjustment:adjusted-confidence,reason:'novel_server_state',noveltyScore:assessment.noveltyScore,samples:assessment.samples,bestSimilarity:assessment.similarStates?.[0]?.similarity??null};
+}
 function graphHealth(k,asOf){
  const relations=Object.values(k.relationshipRegistry),features=Object.values(k.featureRegistry),ids=new Set(relations.map(x=>x.id)),stale=relations.filter(x=>asOf-x.lastValidated>90*DAY&&!['ARCHIVED','REJECTED'].includes(x.status)),orphans=features.filter(x=>!ids.has(x.relationId)),dupes=relations.length-new Set(relations.map(x=>[x.world,x.sourceEntity.id,x.targetEntity.id,x.window.fromHours,x.window.toHours].join('|'))).size;
  return {relationships:relations.length,features:features.length,staleEdges:stale.length,orphanFeatures:orphans.length,duplicateEdges:dupes,status:orphans.length||dupes?'DEGRADED':stale.length?'STALE':'HEALTHY'};
