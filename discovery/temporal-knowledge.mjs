@@ -20,8 +20,8 @@ function similarity(a,b){
  const x=stateVector(a),y=stateVector(b);let d=0;for(let i=0;i<x.length;i++)d+=(x[i]-y[i])**2;d=Math.sqrt(d/x.length);if(a.regimeStatus&&b.regimeStatus&&a.regimeStatus!==b.regimeStatus)d+=.15;return Math.exp(-d);
 }
 function upsertSnapshots(d,k,world,asOf){
- const events=eventsAsOf(d,world,asOf),seen=new Set(k.snapshots.map(x=>x.id));
- for(const e of events){const knownAt=e.availableAt;if(!Number.isFinite(knownAt)||knownAt>asOf)continue;const id='STATE-'+digest({world,eventId:e.id,knownAt}).slice(0,24);if(seen.has(id))continue;const beforeAt=Math.max(1,knownAt-1),state=stateAt(d,world,beforeAt);k.snapshots.push({id,world,eventId:e.id,eventTime:e.spawn.estimate,availableAt:knownAt,capturedAsKnownAt:beforeAt,state});seen.add(id);}
+ const events=eventsAsOf(d,world,asOf),seen=new Set(k.snapshots.map(x=>x.id)),pending=events.filter(e=>{const knownAt=e.availableAt,id='STATE-'+digest({world,eventId:e.id,knownAt}).slice(0,24);return Number.isFinite(knownAt)&&knownAt<=asOf&&!seen.has(id);}).slice(-250);
+ for(const e of pending){const knownAt=e.availableAt;if(!Number.isFinite(knownAt)||knownAt>asOf)continue;const id='STATE-'+digest({world,eventId:e.id,knownAt}).slice(0,24);if(seen.has(id))continue;const beforeAt=Math.max(1,knownAt-1),state=stateAt(d,world,beforeAt);k.snapshots.push({id,world,eventId:e.id,eventTime:e.spawn.estimate,availableAt:knownAt,capturedAsKnownAt:beforeAt,state});seen.add(id);}
  if(k.snapshots.length>10000)k.snapshots.splice(0,k.snapshots.length-10000);
 }
 function featureId(relation){return 'GRAPH-FEATURE-'+digest({relationId:relation.id,source:relation.sourceEntity,target:relation.targetEntity,window:relation.window}).slice(0,24);}
