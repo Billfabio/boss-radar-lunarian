@@ -14,7 +14,7 @@ export function appendOperationalEvent(state,type,payload={},options={}){
  const o=ensureOperational(state),at=Number(options.at)||Date.now(),previousHash=o.events.at(-1)?.hash||'GENESIS',sequence=(o.events.at(-1)?.sequence||0)+1,correlationId=String(options.correlationId||payload.correlationId||''),idempotencyKey=String(options.idempotencyKey||'');
  if(idempotencyKey){const existing=o.events.find(x=>x.idempotencyKey===idempotencyKey);if(existing)return existing;}
  const entry={sequence,type:String(type),at,correlationId,idempotencyKey,payload,previousHash};entry.hash=hash(previousHash+'|'+stable({sequence:entry.sequence,type:entry.type,at:entry.at,correlationId,idempotencyKey,payload}));
- o.events.push(entry);if(o.events.length>50000)o.events.splice(0,o.events.length-50000);return entry;
+ o.events.push(entry);return entry;
 }
 export function verifyOperationalEvents(state){
  const rows=ensureOperational(state).events;let previous='GENESIS';for(let i=0;i<rows.length;i++){const e=rows[i],expected=hash(previous+'|'+stable({sequence:e.sequence,type:e.type,at:e.at,correlationId:e.correlationId||'',idempotencyKey:e.idempotencyKey||'',payload:e.payload}));if(e.previousHash!==previous||e.hash!==expected)return {valid:false,index:i,expected,actual:e.hash};previous=e.hash;}return {valid:true,entries:rows.length,lastHash:previous};
