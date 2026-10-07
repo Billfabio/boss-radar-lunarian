@@ -14,7 +14,7 @@ Regra principal: nova IA não é melhor IA. Um Challenger só pode afetar produ�
 
 O laboratório não cria um segundo Prediction Engine. Ele reutiliza:
 - Prediction Engine adaptativo;
-- Feature Store e datasets versionados;
+- Feature Store e datasets versionados (feature_version 1.1.0);
 - MLOps Registry e Prediction Runs;
 - calibração;
 - drift detection;
@@ -239,9 +239,27 @@ Idade do Champion é apenas contexto; nunca dispara retreino sozinha.
 Stress tests determinísticos:
 - ruído ±5% nos intervalos;
 - outlier x3 no último intervalo;
-- histórico recente reduzido.
+- histórico recente reduzido;
+- qualidade/cobertura de fontes reduzida;
+- fontes indisponíveis;
+- conflito + drift elevado.
 
 O teste mede estabilidade e abstenções. Não é apresentado como teste de acurácia; backtest out-of-sample continua obrigatório.
+
+## Feature Store 1.1.0
+
+Foram adicionados sinais experimentais versionados:
+
+- sourceCoverage: cobertura histórica observada entre 0 e 1, somente quando essa informação existia naquele asOf;
+- regimeSignal: STABLE / TRANSITION / HIGH_DRIFT derivado do drift score e explicitamente não causal.
+
+Regra anti-leakage: sourceCoverage permanece null quando não existe telemetria histórica daquele instante. O AI Lab não usa a cobertura atual para reescrever o passado.
+
+Esses sinais não alteram o Champion automaticamente. Eles existem para que hipóteses futuras possam ser testadas com backtest temporal quando houver histórico suficiente.
+
+## Log Loss e probabilidades
+
+Além de Brier Score e ECE, o laboratório registra Log Loss quando existe confiança probabilística resolvida. Promotion gates impedem regressão material de Brier ou Log Loss.
 
 ## No Prediction Zone
 
@@ -335,7 +353,7 @@ O runtime principal continua usando o storage persistente existente.
 
 - O repositório não versiona o estado real de produção; portanto MAE/Brier/P95 reais do runtime não podem ser publicados aqui.
 - CPU/memória ainda dependem da telemetria da hospedagem.
-- Regimes nomeados EVENT/POST_UPDATE ainda não possuem classificador independente comprovado; drift é usado como sinal.
+- Regimes nomeados EVENT/POST_UPDATE ainda não possuem classificador independente comprovado; `regimeSignal` é apenas um sinal experimental derivado de drift.
 - Cross-boss continua exploratório e nunca entra automaticamente no modelo.
 - empirical_survival possui menos hiperparâmetros expostos que robust_interval.
 - promoção totalmente automática permanece deliberadamente desativada.
