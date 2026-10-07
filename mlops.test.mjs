@@ -131,10 +131,11 @@ test('Analog Forecasting uses only historically resolved states and abstains wit
 });
 
 test('Server Save challenger requires an explicit known schedule and valid statistical bucket',()=>{
- const es=rows(20),asOf=availableAt(es.at(-1))+1,without=buildFeatures(es,'Boss','World',asOf),withSave=buildFeatures(es,'Boss','World',asOf,{serverSaveHour:6});
- const params={bucketFromHours:0,bucketToHours:6,saveLift:2.2,serverSaveWeight:.25};
- assert.equal(without.values.serverSaveHours,null);assert.equal(candidatePrediction('server_save_context_interval',without,params),null);
- assert.ok(Number.isFinite(withSave.values.serverSaveHours));const p=candidatePrediction('server_save_context_interval',withSave,params);assert.ok(p);assert.equal(p.parameters.serverSaveApplied,true);assert.ok(p.predictedAt>=es.at(-1).estimatedAt);
- assert.equal(candidatePrediction('server_save_context_interval',withSave,{...params,saveLift:1}),null);
+ const es=rows(20),asOf=availableAt(es.at(-1))+1,without=buildFeatures(es,'Boss','World',asOf),withSave=buildFeatures(es,'Boss','World',asOf,{serverSaveHour:6}),params={bucketFromHours:0,bucketToHours:6,saveLift:2.2,serverSaveWeight:.25};
+ assert.equal(without.values.serverSaveHours,null);assert.ok(Number.isFinite(withSave.values.serverSaveHours));
+ const controlled={intervals:Array(12).fill(72),rows:[{estimatedAt:T}],values:{preciseSamples:12,serverSaveHours:2,elapsedHours:24}};
+ assert.equal(candidatePrediction('server_save_context_interval',{...controlled,values:{...controlled.values,serverSaveHours:null}},params),null);
+ const p=candidatePrediction('server_save_context_interval',controlled,params);assert.ok(p);assert.equal(p.parameters.serverSaveApplied,true);assert.ok(p.predictedAt>T+24*H);
+ assert.equal(candidatePrediction('server_save_context_interval',controlled,{...params,saveLift:1}),null);
 });
 
