@@ -4,7 +4,7 @@ import {freshnessScore,investigationDigest} from './evidence.mjs';
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 export function sourceHealth(source,now=Date.now()){
  if(!source||source.active===false)return 'OFFLINE';
- if(source.circuitState==='OPEN')return source.circuitReason==='technical'?'ERROR':'DEGRADED';
+ if(source.circuitState==='OPEN'){if(/429|rate.?limit/i.test(String(source.lastError||'')))return 'RATE_LIMITED';return source.circuitReason==='technical'?'ERROR':'DEGRADED';}
  if(source.circuitState==='HALF_OPEN')return 'DEGRADED';
  if((source.consecutiveFailures||0)>=2)return 'DEGRADED';
  if(source.lastSuccess&&now-source.lastSuccess>30*60000)return 'STALE';
