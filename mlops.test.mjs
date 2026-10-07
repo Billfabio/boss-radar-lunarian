@@ -123,9 +123,9 @@ test('A promoted graph model falls back to the base Champion when its relationsh
 
 
 test('Analog Forecasting uses only historically resolved states and abstains with insufficient neighbors',()=>{
- const es=rows(30),asOf=availableAt(es.at(-1))+1,f=buildFeatures(es,'Boss','World',asOf);
+ const es=rows(30),asOf=availableAt(es.at(-1))+1,f=buildFeatures(es,'Boss','World',asOf,{includeAnalog:true});
  assert.equal(f.version,'1.3.0');assert.ok(f.values.analogStateSamples>=20);assert.ok(f.values.analogBestSimilarity>.9);assert.ok(f.analogExamples.every(x=>x.maxContextAvailableAt<=x.evaluatedAt&&x.outcomeAvailableAt<=asOf&&x.outcomeAt>x.evaluatedAt));
  const p=candidatePrediction('analog_state_interval',f,{neighbors:12,minSimilarity:.45});assert.ok(p);assert.ok(Math.abs((p.predictedAt-es.at(-1).estimatedAt)/H-72)<1);
- const sparse=buildFeatures(rows(6),'Boss','World',availableAt(rows(6).at(-1))+1);assert.equal(candidatePrediction('analog_state_interval',sparse,{neighbors:12,minSimilarity:.45}),null);
+ const sparseRows=rows(6),sparse=buildFeatures(sparseRows,'Boss','World',availableAt(sparseRows.at(-1))+1,{includeAnalog:true});assert.equal(candidatePrediction('analog_state_interval',sparse,{neighbors:12,minSimilarity:.45}),null);
  const store={},ds=datasetSnapshot(store,f,{experiment:'analog_state_interval'});assert.equal(ds.analogExamples.length,f.analogExamples.length);assert.equal(verifyDataset(ds),true);
 });
