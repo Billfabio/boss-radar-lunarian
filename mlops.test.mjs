@@ -73,3 +73,21 @@ test('AI Lab Canary auto-rolls back on severe real-world regression',()=>{
 test('AI Lab dashboard exposes sample-aware leaderboard and model card without fictitious metrics',()=>{
  const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.0.0');
 });
+
+
+test('AI Lab parameter variants have distinct identities and reproducible reports',()=>{
+ const s=intel(40);ensureMLOps(s);
+ const a=createLabExperiment(s,{hypothesis:'Peso recente de 20 por cento melhora Boss.',world:'World',boss:'Boss',modelId:'robust_interval',parameters:{recentWindow:10,recentShare:.2,driftRecentShare:.4}}).experiment;
+ const b=createLabExperiment(s,{hypothesis:'Peso recente de 40 por cento melhora Boss.',world:'World',boss:'Boss',modelId:'robust_interval',parameters:{recentWindow:10,recentShare:.4,driftRecentShare:.6}}).experiment;
+ assert.notEqual(a.fingerprint,b.fingerprint);beginExperiment(s,a.id,1);const bt=temporalExperiment(s,'World','robust_interval',T+5000*H,{boss:'Boss',parameters:a.parameters});const done=finishExperiment(s,a.id,bt,{runtimeMs:5,at:2});assert.deepEqual(done.result.report.configuration.parameters,a.parameters);assert.equal(done.result.report.configuration.boss,'Boss');assert.ok(done.datasetVersion);
+});
+test('AI Lab measured ablation creates a real parameterized challenger instead of a label-only experiment',()=>{
+ const s=intel(40);ensureMLOps(s);const exp=createLabExperiment(s,{hypothesis:'Remover intervalos recentes não piora o Boss.',kind:'ablation',world:'World',boss:'Boss',modelId:'robust_interval',features:['recentIntervals'],parameters:{recentWindow:10,recentShare:0,driftRecentShare:0,ablateRecent:true}}).experiment;
+ beginExperiment(s,exp.id,1);const bt=temporalExperiment(s,'World','robust_interval',T+5000*H,{boss:'Boss',parameters:exp.parameters});assert.equal(bt.parameters.ablateRecent,true);assert.ok(bt.pairs.every(x=>Number.isFinite(x.challengerErrorMinutes)));
+});
+test('AI Lab smart retraining does not invent a trigger when baseline is insufficient',()=>{
+ const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.championDegradation.status,'INSUFFICIENT_DATA');assert.equal(d.retraining.status,'NO_RETRAIN_NEEDED');assert.match(d.retraining.note,/Idade do Champion/);
+});
+test('AI Lab robustness probe is deterministic and explicitly not an accuracy claim',()=>{
+ const s=intel(40);ensureMLOps(s);const a=aiLabDashboard(s,'World',T+5000*H).robustness,b=aiLabDashboard(s,'World',T+5000*H).robustness;assert.equal(a.accuracyNotMeasured,true);assert.deepEqual(a.rows,b.rows);
+});
