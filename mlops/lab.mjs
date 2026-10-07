@@ -205,7 +205,10 @@ function robustnessProbe(intel,world,at=Date.now()){
    const noisy=structuredClone(f);noisy.intervals=noisy.intervals.map((x,i)=>x*(i%2?1.05:.95));
    const outlier=structuredClone(f);if(outlier.intervals.length)outlier.intervals[outlier.intervals.length-1]*=3;
    const missing=structuredClone(f);missing.values.preciseSamples=Math.floor(missing.values.preciseSamples*.5);missing.intervals=missing.intervals.slice(0,Math.max(3,missing.intervals.length-3));
-   const scenarios=[['noise_5pct',noisy],['last_interval_outlier_x3',outlier],['reduced_recent_history',missing]].map(([scenario,features])=>{const p=candidatePrediction(modelId,features),shift=p?Math.abs(p.predictedAt-base.predictedAt)/60000:null;return {scenario,available:!!p,predictionShiftMinutes:round(shift,1)};});
+   const lowQuality=structuredClone(f);lowQuality.values.sourceReliability=Number.isFinite(lowQuality.values.sourceReliability)?lowQuality.values.sourceReliability*.5:null;lowQuality.values.confirmations=Math.floor((lowQuality.values.confirmations||0)*.5);lowQuality.values.sourceCoverage=.5;
+   const sourceOffline=structuredClone(f);sourceOffline.values.sourceReliability=0;sourceOffline.values.confirmations=0;sourceOffline.values.sourceCoverage=0;
+   const conflict=structuredClone(f);conflict.values.anomalyScore=Math.min(1,(conflict.values.anomalyScore||0)+.5);conflict.values.driftScore=Math.max(.8,conflict.values.driftScore||0);conflict.values.regimeSignal='HIGH_DRIFT';
+   const scenarios=[['noise_5pct',noisy],['last_interval_outlier_x3',outlier],['reduced_recent_history',missing],['source_quality_50pct',lowQuality],['sources_offline',sourceOffline],['conflict_high_drift',conflict]].map(([scenario,features])=>{const p=candidatePrediction(modelId,features),shift=p?Math.abs(p.predictedAt-base.predictedAt)/60000:null;return {scenario,available:!!p,predictionShiftMinutes:round(shift,1)};});
    rows.push({boss,modelId,samples:f.values.samples,preciseSamples:f.values.preciseSamples,scenarios,maxShiftMinutes:Math.max(0,...scenarios.map(x=>x.predictionShiftMinutes||0)),abstentions:scenarios.filter(x=>!x.available).length});
   }
  }
