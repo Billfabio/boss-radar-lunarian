@@ -1,4 +1,4 @@
-import {MODEL_SPECS,metrics,qualityGate,verifyDataset,candidatePrediction} from './models.mjs';
+import {MODEL_SPECS,metrics,qualityGate,verifyDataset,candidatePrediction,datasetSnapshot} from './models.mjs';
 import {buildFeatures,digest,FEATURE_VERSION} from './feature-store.mjs';
 import {featureImportance} from './analysis.mjs';
 import {calibrateConfidence} from '../learning/calibration.mjs';
@@ -107,11 +107,10 @@ export function recordLabShadowPredictions(intel,forecast,asOf,features,datasetI
  const l=ensureAILab(intel),s=mlops(intel),created=[];
  for(const exp of Object.values(l.experiments)){
   if(!['SHADOW','CHALLENGER','ELIGIBLE_FOR_PROMOTION'].includes(exp.status)||exp.world!==forecast.world||(exp.boss&&exp.boss!==forecast.boss)||!exp.shadowStartedAt||asOf<exp.shadowStartedAt)continue;
-  const identity=forecast.id+'|'+datasetId+'|'+exp.id;if(s.runs.some(x=>x.identity===identity))continue;
-  const expFeatures=exp.modelId==='graph_context_interval'?buildFeatures(intel.events,forecast.boss,forecast.world,asOf,{relatedBoss:exp.parameters?.sourceBoss||null}):features;
+  const expFeatures=exp.modelId==='graph_context_interval'?buildFeatures(intel.events,forecast.boss,forecast.world,asOf,{relatedBoss:exp.parameters?.sourceBoss||null}):features,experimentDataset=exp.modelId==='graph_context_interval'?datasetSnapshot(s.datasets,expFeatures,{experimentId:exp.id,modelId:exp.modelId,parameters:structuredClone(exp.parameters||{}),sourceDatasetId:datasetId}):s.datasets[datasetId],runDatasetId=experimentDataset?.id||datasetId,identity=forecast.id+'|'+runDatasetId+'|'+exp.id;if(s.runs.some(x=>x.identity===identity))continue;
   const start=performance.now(),prediction=candidatePrediction(exp.modelId,expFeatures,exp.parameters||{});if(!prediction)continue;
   const historical=s.runs.filter(x=>x.experimentId===exp.id&&x.world===forecast.world&&x.boss===forecast.boss&&x.resolvedAt&&x.resolvedAt<asOf),raw=forecast.confidenceRaw??forecast.confidence,cal=calibrateConfidence(raw,historical,forecast.world,forecast.boss);
-  const run={identity,experimentId:exp.id,forecastId:forecast.id,pairId:forecast.id,boss:forecast.boss,world:forecast.world,datasetId,asOf,modelId:exp.modelId,modelVersion:exp.modelVersion,mode:'ExperimentShadow',...prediction,confidenceRaw:raw,confidence:cal.samples>=20?cal.calibrated:null,calibrationSamples:cal.samples,latencyMs:performance.now()-start,parameters:structuredClone(exp.parameters||{})};s.runs.push(run);created.push(run);
+  const run={identity,experimentId:exp.id,forecastId:forecast.id,pairId:forecast.id,boss:forecast.boss,world:forecast.world,datasetId:runDatasetId,asOf,modelId:exp.modelId,modelVersion:exp.modelVersion,mode:'ExperimentShadow',...prediction,confidenceRaw:raw,confidence:cal.samples>=20?cal.calibrated:null,calibrationSamples:cal.samples,latencyMs:performance.now()-start,parameters:structuredClone(exp.parameters||{})};s.runs.push(run);created.push(run);
  }
  return created;
 }
