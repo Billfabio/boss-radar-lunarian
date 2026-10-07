@@ -97,7 +97,7 @@ export function noveltyConfidenceGuard(assessment,currentConfidence){
  return {applied:adjusted<confidence,confidenceCap:cap,adjustedConfidence:adjusted,adjustment:adjusted-confidence,reason:'novel_server_state',noveltyScore:assessment.noveltyScore,samples:assessment.samples,bestSimilarity:assessment.similarStates?.[0]?.similarity??null};
 }
 function graphHealth(k,asOf){
- const relations=Object.values(k.relationshipRegistry),features=Object.values(k.featureRegistry),ids=new Set(relations.map(x=>x.id)),stale=relations.filter(x=>asOf-x.lastValidated>90*DAY&&!['ARCHIVED','REJECTED'].includes(x.status)),orphans=features.filter(x=>!ids.has(x.relationId)),dupes=relations.length-new Set(relations.map(x=>[x.world,x.sourceEntity.id,x.targetEntity.id,x.window.fromHours,x.window.toHours].join('|'))).size;
+ const relations=Object.values(k.relationshipRegistry),features=Object.values(k.featureRegistry),ids=new Set(relations.map(x=>x.id)),stale=relations.filter(x=>asOf-x.lastValidated>90*DAY&&!['ARCHIVED','REJECTED'].includes(x.status)),orphans=features.filter(x=>x.relationId!=null&&!ids.has(x.relationId)),dupes=relations.length-new Set(relations.map(x=>[x.world,x.sourceEntity.id,x.targetEntity.id,x.window.fromHours,x.window.toHours].join('|'))).size;
  return {relationships:relations.length,features:features.length,staleEdges:stale.length,orphanFeatures:orphans.length,duplicateEdges:dupes,status:orphans.length||dupes?'DEGRADED':stale.length?'STALE':'HEALTHY'};
 }
 export function temporalKnowledgeDashboard(intel,world,asOf=Date.now()){
@@ -108,7 +108,7 @@ export function temporalKnowledgeDashboard(intel,world,asOf=Date.now()){
 export function queryTemporalKnowledge(intel,world,input={},asOf=Date.now()){
  const dashboard=temporalKnowledgeDashboard(intel,world,asOf),boss=String(input.boss||'').trim(),kind=String(input.kind||'before');
  if(kind==='after')return {question:{kind,boss},answer:dashboard.topRelationships.filter(x=>x.sourceEntity.id===boss).slice(0,50),evidenceRequired:true,asOf};
- if(kind==='before')return {question:{kind,boss},answer:dashboard.topRelationships.filter(x=>x.targetEntity.id===boss).slice(0,50),evidenceRequired:true,asOf};
+ if(kind==='before'){const contrastive=(dashboard.beforeSpawn?.results||[]).find(x=>x.boss===boss);return {question:{kind,boss},answer:{relationships:dashboard.topRelationships.filter(x=>x.targetEntity.id===boss).slice(0,50),contrastiveSignals:(contrastive?.signals||[]).filter(x=>x.status==='CANDIDATE_SIGNAL').slice(0,50),featureHypotheses:dashboard.hypotheses.filter(x=>x.boss===boss&&x.origin==='before_spawn_contrastive').slice(0,50)},evidenceRequired:true,asOf,note:'Combina relações temporais registradas com análise contrastiva Before-Spawn. Associação não implica causalidade.'};}
  if(kind==='source')return {question:{kind,source:String(input.source||'')},answer:dashboard.sourceRelationships.filter(x=>x.from===input.source||x.to===input.source).slice(0,50),evidenceRequired:true,asOf};
  if(kind==='drift')return {question:{kind},answer:dashboard.relationshipDrift,evidenceRequired:true,asOf};
  if(kind==='similar')return {question:{kind},answer:{state:dashboard.serverState,noveltyScore:dashboard.stateNoveltyScore,similar:dashboard.similarHistoricalStates},evidenceRequired:true,asOf};
