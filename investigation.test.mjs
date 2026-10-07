@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createInvestigationEngine} from './investigation/engine.mjs';
-import {assessCandidate,calibrateCandidate,historicalContext} from './investigation/scoring.mjs';
+import {assessCandidate,calibrateCandidate,historicalContext,consensus} from './investigation/scoring.mjs';
 import {sourceHealth} from './investigation/source-adapters.mjs';
 
 const candidate=(at=Date.now())=>({id:'cand-1',boss:'Ferumbras',world:'Lunarian',firstEvidenceAt:at,lastEvidenceAt:at,estimatedAt:at,evidence:[
@@ -55,4 +55,23 @@ test('backtest uses immutable decision snapshots instead of recomputing future e
  const state={whatsapp:{coverageSegments:[]}},engine=createInvestigationEngine({state,persist:async()=>{},broadcast:()=>{},getSnapshot:emptySnapshot});
  for(let i=0;i<3;i++){const c={...candidate(Date.now()+i),id:'cand-'+i};await engine.investigate(c);await engine.recordDecision(c,{outcome:i<2?'CONFIRMED':'REJECTED',finalAt:Date.now()});}
  const b=engine.backtest();assert.equal(b.temporal,true);assert.equal(b.samples,3);assert.match(b.note,/snapshot imutável/);
+});
+
+test('coordinated identical reports are detected without collapsing distinct reporters',()=>{
+ const base={positive:true,negative:false,canConfirm:true,sourceKind:'community',sourceHealth:'HEALTHY',evidenceStrength:.8,freshness:1,detail:{textHash:'same'}},rows=[
+  {...base,id:'a',independenceKey:'reporter:a',authorHash:'a',observedAt:1000,estimatedAt:1000},
+  {...base,id:'b',independenceKey:'reporter:b',authorHash:'b',observedAt:5000,estimatedAt:5000},
+  {...base,id:'c',independenceKey:'reporter:c',authorHash:'c',observedAt:9000,estimatedAt:9000}
+ ];const c=consensus(rows);assert.equal(c.independentEvidence,3);assert.ok(c.coordinationScore>.9);
+});
+
+test('expired investigation can be linked to a later reopened candidate for the same boss',async()=>{
+ let clock=Date.now();const state={whatsapp:{coverageSegments:[]}},engine=createInvestigationEngine({state,persist:async()=>{},broadcast:()=>{},getSnapshot:emptySnapshot,now:()=>clock});
+ const first=candidate(clock);await engine.investigate(first);clock+=31*60000;await engine.tick();assert.equal(state.investigation.cases[0].status,'EXPIRED');
+ const second={...candidate(clock),id:'cand-reopen'};const reopened=await engine.investigate(second);assert.equal(reopened.status,'REOPENED');assert.equal(reopened.reopenedFromCandidateId,'cand-1');
+});
+
+test('Source Intelligence reports operational sources before investigation decisions exist',()=>{
+ const state={whatsapp:{coverageSegments:[]}},engine=createInvestigationEngine({state,persist:async()=>{},broadcast:()=>{},getSnapshot:emptySnapshot});
+ const p=engine.publicState('Lunarian');assert.ok(p.sources.some(x=>x.id==='whatsapp-group'));assert.equal(p.sources.find(x=>x.id==='whatsapp-group').samples,0);
 });
