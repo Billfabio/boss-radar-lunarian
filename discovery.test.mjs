@@ -14,6 +14,7 @@ import {createIntelligence} from './intelligence/service.mjs';
 import {discoveryHtml,historicalHtml} from './discovery-ui.mjs';
 import {spawnDistribution} from './discovery/distribution.mjs';
 import {predictionErrorRelationshipAnalysis,confirmationLatencyAnalysis} from './discovery/context-analysis.mjs';
+import {causalDiscoveryLab} from './discovery/causal-lab.mjs';
 import {reviewCandidate,evaluateSources} from './discovery/service.mjs';
 import {learnFromEvent} from './learning/reliability.mjs';
 import {digest} from './mlops/feature-store.mjs';
@@ -122,5 +123,14 @@ test('Confirmation Latency graph finds slow sources without changing source weig
  for(let i=0;i<40;i++){const at=T+i*3*H,fastDelay=i<2?90:10,slowDelay=i<35?120:20;s.events.push({id:'lat'+i,boss:'Boss',world:'World',estimatedAt:at,status:'confirmed_auto',eventType:'appearance',qualityStatus:'CONFIRMADO',evidence:[{evidenceId:'fast'+i,sourceId:'fast',collectedAt:at+fastDelay*60000,processedAt:at+fastDelay*60000,reportedAt:at+fastDelay*60000,quality:{traceable:true,status:'CONFIRMADO'}},{evidenceId:'slow'+i,sourceId:'slow',collectedAt:at+slowDelay*60000,processedAt:at+slowDelay*60000,reportedAt:at+slowDelay*60000,quality:{traceable:true,status:'CONFIRMADO'}}]});}
  const d=confirmationLatencyAnalysis(s,'World',T+200*H),slow=d.sources.find(x=>x.sourceId==='slow'),q=queryTemporalKnowledge(s,'World',{kind:'confirmations'},T+200*H);
  assert.equal(d.status,'MEASURED');assert.equal(d.samples,80);assert.ok(slow);assert.equal(slow.status,'SLOW_ASSOCIATION');assert.ok(slow.riskRatio>10);assert.ok(slow.test.q<=.05);assert.equal(slow.productionEligible,false);assert.equal(slow.weightAdjustment,null);assert.equal(slow.causalityProven,false);assert.ok(q.answer.some(x=>x.sourceId==='slow'));
+});
+
+test('Temporal Causal Lab requires matching, balance, FDR, reverse placebo and stability before CAUSAL_CANDIDATE',()=>{
+ const s=intelligence(),events=[],asOf=T+130*24*H;
+ for(let i=0;i<40;i++){const a=T+24*H+i*72*H;events.push({id:'ca'+i,boss:'A',world:'World',status:'CONFIRMADO',spawn:{lower:a,upper:a,estimate:a},availableAt:a+1000,evidence:[]});if(i<32){const b=a+4*H;events.push({id:'cb'+i,boss:'B',world:'World',status:'CONFIRMADO',spawn:{lower:b,upper:b,estimate:b},availableAt:b+1000,evidence:[]});}}
+ events.sort((a,b)=>a.spawn.estimate-b.spawn.estimate);s.discovery.versions=events.map(e=>({at:e.availableAt,event:e,hash:'c'+e.id}));s.discovery.coverage=[{boss:'A',world:'World',startAt:T,endAt:asOf,knownAt:T,verified:true,continuous:true},{boss:'B',world:'World',startAt:T,endAt:asOf,knownAt:T,verified:true,continuous:true}];
+ const relation={id:'causal-rel',world:'World',sourceEntity:{type:'Boss',id:'A'},targetEntity:{type:'Boss',id:'B'},window:{fromHours:3,toHours:6},status:'DISCOVERED',metrics:{sampleSize:40,direction:'POSITIVE',adjustedSignificance:.001,qualityScore:95}};
+ const lab=causalDiscoveryLab(s,'World',asOf,{relationships:[relation],maxRelations:1,caliper:.35}),r=lab.results[0];
+ assert.ok(r);assert.ok(r.matchedPairs>=20);assert.ok(r.matchRate>=.6);assert.ok(r.balance.maxAbsSmd<=.25);assert.ok(r.averageTreatmentEffectOnTreated>.5);assert.ok(r.causalTest.q<=.05);assert.ok(r.placeboTest.q>.05);assert.ok(r.stability.passed);assert.equal(r.status,'CAUSAL_CANDIDATE');assert.equal(r.evidenceLevel,'MATCHED_OBSERVATIONAL_WITH_PLACEBO');assert.equal(r.causalityProven,false);assert.equal(r.productionEligible,false);assert.equal(r.aiLabPromotionEligible,false);assert.equal(r.identificationAssumptions.unmeasuredConfoundingResolved,false);
 });
 
