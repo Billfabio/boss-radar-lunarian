@@ -29,7 +29,7 @@ test('Poisoning detector ignores day-only repetition and flags precise source bu
 test('Feature importance is measured only after enough temporal folds',()=>{assert.equal(featureImportance(rows(20),'Boss','World',T+3000*H).status,'insufficient');const r=featureImportance(rows(60),'Boss','World',T+6000*H);assert.equal(r.status,'no_positive_gain');assert.equal(r.productionEligible,false);assert.ok(r.features.every(x=>x.importance==null));});
 test('Canary selection is deterministic and regression rolls back',()=>{const s=intel();ensureMLOps(s);s.mlops.rollouts['World|boss']={id:'u',status:'canary',models:{candidate:true},percentage:5,stage:0,stageStartedAt:1,gate:{champion:{maeMinutes:10,windowAccuracy:1}}};assert.deepEqual(modelsForPrediction(s,'Boss','World','same'),modelsForPrediction(s,'Boss','World','same'));s.forecasts=Array.from({length:20},(_,i)=>({boss:'Boss',world:'World',createdAt:2,resolvedAt:3,errorMinutes:20,windowHit:false,rollout:{id:'u',selected:true}}));assert.equal(monitorCanary(s,'Boss','World',4).status,'rolled_back');assert.equal(modelsForPrediction(s,'Boss','World','same').models,s.models);});
 test('Queue retries only declared idempotent jobs and preserves dead letters while processing recovers',async()=>{const letters=[],q=new TaskQueue({deadLetters:letters});assert.throws(()=>q.enqueue('unsafe',async()=>{}, {maxAttempts:2}),/idempotente/);let attempts=0;await assert.rejects(q.enqueue('bad',async()=>{attempts++;throw new Error('failure');},{idempotent:true,maxAttempts:3,payload:{eventId:'e'}}));assert.equal(attempts,3);assert.equal(letters[0].attempts,3);assert.equal(letters[0].payload.eventId,'e');assert.equal(await q.enqueue('good',async()=>42),42);assert.equal(q.stats().deadLetterCount,1);});
-test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,4);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
+test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,5);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
 
 
 function labBacktest(n=120){
@@ -129,3 +129,18 @@ test('Analog Forecasting uses only historically resolved states and abstains wit
  const sparseRows=rows(6),sparse=buildFeatures(sparseRows,'Boss','World',availableAt(sparseRows.at(-1))+1,{includeAnalog:true});assert.equal(candidatePrediction('analog_state_interval',sparse,{neighbors:12,minSimilarity:.45}),null);
  const store={},ds=datasetSnapshot(store,f,{experiment:'analog_state_interval'});assert.equal(ds.analogExamples.length,f.analogExamples.length);assert.equal(verifyDataset(ds),true);
 });
+
+test('Server Save challenger requires an explicit known schedule and valid statistical bucket',()=>{
+ const es=rows(20),asOf=availableAt(es.at(-1))+1,without=buildFeatures(es,'Boss','World',asOf),withSave=buildFeatures(es,'Boss','World',asOf,{serverSaveHour:6});
+ const params={bucketFromHours:0,bucketToHours:6,saveLift:2.2,serverSaveWeight:.25};
+ assert.equal(without.values.serverSaveHours,null);assert.equal(candidatePrediction('server_save_context_interval',without,params),null);
+ assert.ok(Number.isFinite(withSave.values.serverSaveHours));const p=candidatePrediction('server_save_context_interval',withSave,params);assert.ok(p);assert.equal(p.parameters.serverSaveApplied,true);assert.ok(p.predictedAt>=asOf);
+ assert.equal(candidatePrediction('server_save_context_interval',withSave,{...params,saveLift:1}),null);
+});
+
+test('Server Save temporal experiment versions the schedule known at each asOf',()=>{
+ const s=intel(40);s.discovery={serverSaveSchedules:[{id:'save-v1',world:'World',hour:6,knownAt:T,validFrom:T,sourceRef:'verified'}]};
+ const r=temporalExperiment(s,'World','server_save_context_interval',T+5000*H,{boss:'Boss',parameters:{bucketFromHours:0,bucketToHours:6,saveLift:2,serverSaveWeight:.25}});
+ assert.ok(r.samples>0);assert.equal(r.leakagePassed,true);for(const id of r.datasetIds){const ds=s.mlops.datasets[id];assert.ok(ds.context.serverSaveSchedule);assert.ok(ds.context.serverSaveSchedule.knownAt<=ds.asOf);assert.ok(ds.context.serverSaveSchedule.validFrom<=ds.asOf);}
+});
+
