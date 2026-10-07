@@ -71,7 +71,7 @@ test('AI Lab Canary auto-rolls back on severe real-world regression',()=>{
  const result=monitorLabCanary(s,'Boss','World',1004);assert.equal(result.status,'ROLLED_BACK');assert.equal(exp.status,'REJECTED');
 });
 test('AI Lab dashboard exposes sample-aware leaderboard and model card without fictitious metrics',()=>{
- const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.0.0');
+ const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.1.0');
 });
 
 
@@ -90,4 +90,15 @@ test('AI Lab smart retraining does not invent a trigger when baseline is insuffi
 });
 test('AI Lab robustness probe is deterministic and explicitly not an accuracy claim',()=>{
  const s=intel(40);ensureMLOps(s);const a=aiLabDashboard(s,'World',T+5000*H).robustness,b=aiLabDashboard(s,'World',T+5000*H).robustness;assert.equal(a.accuracyNotMeasured,true);assert.deepEqual(a.rows,b.rows);
+});
+
+
+test('AI Lab Feature Store v1.1 exposes source coverage only when historically supplied and derives non-causal regime signal',()=>{
+ const es=rows(30),asOf=availableAt(es.at(-1))+1,a=buildFeatures(es,'Boss','World',asOf),b=buildFeatures(es,'Boss','World',asOf,{sourceCoverage:.73});
+ assert.equal(a.version,'1.1.0');assert.equal(a.values.sourceCoverage,null);assert.equal(b.values.sourceCoverage,.73);assert.ok(['STABLE','TRANSITION','HIGH_DRIFT'].includes(b.values.regimeSignal));
+});
+
+test('AI Lab robustness includes missing-source and conflict scenarios without claiming accuracy',()=>{
+ const s=intel(40);ensureMLOps(s);const d=aiLabDashboard(s,'World',T+5000*H),names=new Set((d.robustness.rows||[]).flatMap(x=>x.scenarios.map(y=>y.scenario)));
+ assert.equal(d.robustness.accuracyNotMeasured,true);assert.ok(names.has('sources_offline'));assert.ok(names.has('source_quality_50pct'));assert.ok(names.has('conflict_high_drift'));
 });
