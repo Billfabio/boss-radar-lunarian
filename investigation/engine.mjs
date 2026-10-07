@@ -38,7 +38,7 @@ function backtestFromSnapshots(inv){
  const calibrated=rows.filter(x=>Number.isFinite(x.calibratedConfidence));const brier=calibrated.length?calibrated.reduce((n,x)=>{const p=x.calibratedConfidence/100,y=x.outcome==='CONFIRMED'?1:0;return n+(p-y)*(p-y);},0)/calibrated.length:null;
  return {temporal:true,note:'Usa somente o snapshot imutável salvo no momento da decisão; nenhuma evidência posterior é recalculada.',samples:rows.length,confirmRecommendations:recommended.length,confirmRecommendationAccuracy:recommended.length?Math.round(correctRec/recommended.length*1000)/10:null,highConfidenceSamples:high.length,falsePositiveRate:high.length?Math.round(falsePositive/high.length*1000)/10:null,brier:brier==null?null:Math.round(brier*10000)/10000};
 }
-function publicCase(inv,c){const evidence=caseEvidence(inv,c);return {...c,evidence:evidence.map(publicEvidence),graph:evidenceGraph(c,evidence),timeline:(c.timeline||[]).map(({fingerprint,...x})=>x)};}
+function publicCase(inv,c){const evidence=caseEvidence(inv,c),{candidateSnapshot,evidenceIds,...safe}=c;return {...safe,evidenceCount:(evidenceIds||[]).length,evidence:evidence.map(publicEvidence),graph:evidenceGraph(c,evidence),timeline:(c.timeline||[]).map(({fingerprint,...x})=>x)};}
 
 export function createInvestigationEngine({state,persist,broadcast,getSnapshot,refreshSources=async()=>{},now=()=>Date.now()}){
  const inv=ensureState(state);
