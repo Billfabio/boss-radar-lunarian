@@ -78,8 +78,8 @@ test('Source Intelligence reports operational sources before investigation decis
 
 
 test('Reporter graph detects possible propagation without exposing personal identities',async()=>{
- let clock=Date.now(),state={whatsapp:{coverageSegments:[]}},engine=createInvestigationEngine({state,persist:async()=>{},broadcast:()=>{},getSnapshot:emptySnapshot,now:()=>clock});
- for(let i=0;i<12;i++){const at=clock+i*60000,c={id:'prop-'+i,boss:'Ferumbras',world:'Lunarian',firstEvidenceAt:at,lastEvidenceAt:at+5000,estimatedAt:at,evidence:[
+ let clock=Date.now(),base=clock,state={whatsapp:{coverageSegments:[]}},engine=createInvestigationEngine({state,persist:async()=>{},broadcast:()=>{},getSnapshot:emptySnapshot,now:()=>clock});
+ for(let i=0;i<12;i++){const at=base+i*60000;clock=at+31000;const c={id:'prop-'+i,boss:'Ferumbras',world:'Lunarian',firstEvidenceAt:at,lastEvidenceAt:at+5000,estimatedAt:at,evidence:[
   {id:'pa-'+i,bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}],contextClassification:'POSSIBLE_REPORT',messageTimestamp:at,capturedTimestamp:at+50,receivedAt:at+100,authorHash:'a'.repeat(64),reporter:{samples:100,reliability:92},text:'ferumbras now'},
   {id:'pb-'+i,bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}],contextClassification:'CONFIRMATION',messageTimestamp:at+30000,capturedTimestamp:at+30050,receivedAt:at+30100,authorHash:'b'.repeat(64),reporter:{samples:80,reliability:90},text:'ferumbras now'}
  ]};await engine.investigate(c);}
