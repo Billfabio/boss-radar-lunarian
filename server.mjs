@@ -211,8 +211,9 @@ async function deliverPush(payload,item){
 }
 function outboxHandlers(){
  return {
-  intelligence_ingest_checks:async(payload,item)=>{if(state.operational.controls.predictionDisabled)throw new Error('Prediction Engine desativado pelo kill switch');const result=await intelligence.ingestChecks(payload.records||[]);appendOperationalEvent(state,'INTELLIGENCE_INGESTED',{records:(payload.records||[]).map(x=>x.id),added:result},{correlationId:item.correlationId,idempotencyKey:'intel-ingested:'+item.idempotencyKey});return result;},
+  intelligence_ingest_checks:async(payload,item)=>{const result=await intelligence.ingestChecks(payload.records||[]);appendOperationalEvent(state,'INTELLIGENCE_INGESTED',{records:(payload.records||[]).map(x=>x.id),added:result},{correlationId:item.correlationId,idempotencyKey:'intel-ingested:'+item.idempotencyKey});return result;},
   investigation_start:async(payload,item)=>{if(state.operational.controls.investigationDisabled)throw new Error('Investigation Engine desativado pelo kill switch');const result=await investigation.investigate(payload.candidate,{forceSources:true});lastInvestigationTickAt=Date.now();appendOperationalEvent(state,'INVESTIGATION_PROCESSED',{candidateId:payload.candidate.id,caseId:result.id||null},{correlationId:item.correlationId,idempotencyKey:'investigation-processed:'+item.idempotencyKey});return {caseId:result.id||null};},
+  intelligence_remove_checks:async(payload,item)=>{await intelligence.removeChecks(payload.records||[]);appendOperationalEvent(state,'INTELLIGENCE_REMOVAL_PROCESSED',{records:(payload.records||[]).map(x=>x.id)},{correlationId:item.correlationId,idempotencyKey:'intel-remove:'+item.idempotencyKey});return {removed:(payload.records||[]).length};},
   investigation_decision:async(payload,item)=>{if(state.operational.controls.investigationDisabled)throw new Error('Investigation Engine desativado pelo kill switch');const result=await investigation.recordDecision(payload.candidate,payload.decision);appendOperationalEvent(state,'INVESTIGATION_DECISION_PROCESSED',{candidateId:payload.candidate.id,decisionId:result.id||null,outcome:payload.decision.outcome},{correlationId:item.correlationId,idempotencyKey:'investigation-decision-processed:'+item.idempotencyKey});return {decisionId:result.id||null};},
   push_alert:deliverPush
  };
@@ -221,6 +222,10 @@ async function drainOutbox(limit=25){return processOutbox(state,outboxHandlers()
 async function reliableIngestChecks(records=[]){
  const ids=records.map(x=>x.id).sort(),correlationId=records.find(x=>x.correlationId)?.correlationId||'trace-checks-'+Buffer.from(ids.join('|')).toString('base64url').slice(0,24),key='intelligence-checks:'+ids.join('|');
  enqueueOutbox(state,'intelligence_ingest_checks',{records},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CONFIRMED_EVENT_QUEUED_FOR_INTELLIGENCE',{recordIds:ids},{correlationId,idempotencyKey:'event-queued:'+key});await persist();await drainOutbox(10);return {queued:true};
+}
+async function reliableRemoveChecks(records=[]){
+ const ids=records.map(x=>x.id).sort(),correlationId=records.find(x=>x.correlationId)?.correlationId||'trace-remove-'+Buffer.from(ids.join('|')).toString('base64url').slice(0,24),key='intelligence-remove:'+ids.join('|');
+ enqueueOutbox(state,'intelligence_remove_checks',{records},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'EVENT_REMOVAL_QUEUED',{recordIds:ids},{correlationId,idempotencyKey:'remove-queued:'+key});await persist();await drainOutbox(10);return {queued:true};
 }
 async function reliableInvestigationStart(candidate){
  const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-start:'+candidate.id;enqueueOutbox(state,'investigation_start',{candidate},{priority:'HIGH',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CANDIDATE_INVESTIGATION_QUEUED',{candidateId:candidate.id,boss:candidate.boss},{correlationId,idempotencyKey:'candidate-investigation:'+candidate.id});await persist();await drainOutbox(10);const found=investigation.publicState(candidate.world).cases.find(x=>x.candidateId===candidate.id);if(found)return found;const pending=state.operational.outbox.find(x=>x.idempotencyKey===key);if(pending)throw new Error(pending.lastError||'Investigação preservada na fila para retry');throw new Error('Investigação ainda não disponível');
@@ -322,12 +327,12 @@ const server=http.createServer(async(req,res)=>{
         const countKill=input.countKill===true&&input.result==='morto';
         const previous=resolvedProgress(input.boss,state.settings.progress[input.boss],bosstiary);
         if(countKill){const p=resolvedProgress(input.boss,state.settings.progress[input.boss],bosstiary);state.settings.progress[input.boss]=resolvedProgress(input.boss,{...p,kills:p.kills+1,known:true},bosstiary);}
-        const savedCheck={id:input.id,boss:input.boss,world:state.settings.world,result:input.result,countKill,previousKills:previous.kills,previousKnown:previous.known,afterKills:previous.kills+1,at:Date.now(),origin:'manual',precision:'minute'};state.checks.unshift(savedCheck); state.checks=state.checks.slice(0,2000); await intelligence.ingestChecks([savedCheck]); await persist(); return json(res,200,{ok:true,id:input.id});
+        const savedCheck={id:input.id,boss:input.boss,world:state.settings.world,result:input.result,countKill,previousKills:previous.kills,previousKnown:previous.known,afterKills:previous.kills+1,at:Date.now(),origin:'manual',precision:'minute'};state.checks.unshift(savedCheck); state.checks=state.checks.slice(0,2000); await reliableIngestChecks([savedCheck]); await persist(); return json(res,200,{ok:true,id:input.id});
       }
       if(url.pathname==='/api/check/undo'){
         const check=state.checks.find(c=>c.id===input.id);if(!check)return json(res,200,{ok:true});
         if(check.countKill){const p=resolvedProgress(check.boss,state.settings.progress[check.boss],bosstiary);if(p.kills!==check.afterKills)throw new Error('A quantidade foi alterada depois deste registro. Ajuste o total em Meu progresso.');state.settings.progress[check.boss]=resolvedProgress(check.boss,{...p,kills:check.previousKills,known:check.previousKnown},bosstiary);}
-        await intelligence.removeCheck(check);state.checks=state.checks.filter(c=>c.id!==input.id);await persist();return json(res,200,{ok:true});
+        state.checks=state.checks.filter(c=>c.id!==input.id);await reliableRemoveChecks([check]);await persist();return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/group-checks'){
         if(typeof input.batchId!=='string'||!/^[a-zA-Z0-9-]{10,80}$/.test(input.batchId))throw new Error('Rodada inválida');
@@ -335,10 +340,10 @@ const server=http.createServer(async(req,res)=>{
         const names=[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name),...Object.keys(state.settings.progress)])];
         const rows=validateGroupRows(input,names,WORLDS),existing=new Set(state.groupChecks.map(checkKey)),fresh=rows.filter(c=>!existing.has(checkKey(c)));
         if(state.groupChecks.length+fresh.length>50000)throw new Error('Limite de 50 mil checagens. Exporte o histórico antes de continuar.');
-        const stored=fresh.map((c,i)=>({...c,id:input.batchId+'-'+i,batchId:input.batchId,recordedAt:Date.now()}));state.groupChecks.unshift(...stored);await intelligence.ingestChecks(stored);await persist();broadcast('update',{});return json(res,200,{added:fresh.length,duplicates:rows.length-fresh.length});
+        const stored=fresh.map((c,i)=>({...c,id:input.batchId+'-'+i,batchId:input.batchId,recordedAt:Date.now()}));state.groupChecks.unshift(...stored);await reliableIngestChecks(stored);await persist();broadcast('update',{});return json(res,200,{added:fresh.length,duplicates:rows.length-fresh.length});
       }
       if(url.pathname==='/api/group-checks/undo'){
-        if(typeof input.batchId!=='string')throw new Error('Rodada inválida');const removed=state.groupChecks.filter(c=>c.batchId===input.batchId);await intelligence.removeChecks(removed);state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await persist();broadcast('update',{});return json(res,200,{ok:true});
+        if(typeof input.batchId!=='string')throw new Error('Rodada inválida');const removed=state.groupChecks.filter(c=>c.batchId===input.batchId);state.groupChecks=state.groupChecks.filter(c=>c.batchId!==input.batchId);await reliableRemoveChecks(removed);await persist();broadcast('update',{});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/intelligence/correct'){const result=await intelligence.correct({eventId:input.eventId,at:input.at,reason:input.reason,actor:'site-admin'});return json(res,200,result);}
       if(url.pathname==='/api/intelligence/backtest'){const world=WORLDS.includes(input.world)?input.world:state.settings.world;const result=await heavyQueue.enqueue('backtest:'+world,async()=>intelligence.backtest(world));return json(res,200,result);}
