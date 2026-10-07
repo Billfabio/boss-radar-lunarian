@@ -24,6 +24,8 @@ import {selfCritique} from '../mlops/analysis.mjs';
 import {survivalCurve} from '../mlops/models.mjs';
 import {ensureAILab,createLabExperiment,beginExperiment,finishExperiment,failExperiment,aiLabDashboard,approveExperiment,rejectExperiment,archiveExperiment,rollbackLabChampion,applyLabModel,monitorLabCanary,refreshAllExperiments} from '../mlops/lab.mjs';
 import {ensureDiscovery,captureCanonical,discoveryDashboard,discover,historicalReplay,registerCandidate,sourceSample,addContext,addCoverage,reviewCandidate} from '../discovery/service.mjs';
+import {temporalKnowledgeDashboard} from '../discovery/temporal-knowledge.mjs';
+import {investigationGraphContext} from '../discovery/context-analysis.mjs';
 
 import {discoveryControl,prospectiveTick,governedObservations,signalOverlay,windowEvidence} from '../discovery/runtime.mjs';
 import {recordConfiguration,recordHistoricalAlert} from '../discovery/history.mjs';
@@ -229,5 +231,5 @@ export function createIntelligence({state,persist,broadcast}){
  if(intel.discovery.automaticCollection&&at-(intel.discovery.collectionRuns.at(-1)?.at||0)>=3600000)await discoveryWrite('collect',{world});
  for(const row of governedObservations(intel,at)){addObservation(row.observation);row.sample.admittedAt=at;}await save();
  }
- return {discoveryTick,recordAlert:input=>recordHistoricalAlert(intel.discovery,input),recordSettings:()=>recordConfiguration(intel.discovery,state.settings.world,state.settings),windowEvidence:input=>windowEvidence(intel,input.world,input.boss,input.startAt,input.endAt,input.prior),sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation,mlops:world=>dashboard(intel,world),aiLab:world=>aiLabDashboard(intel,world),labCreate,labRun,labDecision,labRollback,replay:id=>replayPrediction(intel,id),experiment,discovery:world=>discoveryDashboard(intel,world),discoveryWrite,discoveryDue,historical:input=>historicalReplay(intel.discovery,input.world,input.startAt,input.endAt,input.stepMinutes,intel.mlops.runs)};
+ return {discoveryTick,recordAlert:input=>recordHistoricalAlert(intel.discovery,input),recordSettings:()=>recordConfiguration(intel.discovery,state.settings.world,state.settings),windowEvidence:input=>windowEvidence(intel,input.world,input.boss,input.startAt,input.endAt,input.prior),knowledgeContext:(world,boss,asOf=Date.now())=>investigationGraphContext(temporalKnowledgeDashboard(intel,world,asOf),boss),sourceAttempt,sourceReady,ingestPublic,ingestOfficial,ingestChecks,bootstrapChecks,removeCheck,removeChecks,correct,snapshot,backtest,simulate,healthState,addObservation,mlops:world=>dashboard(intel,world),aiLab:world=>aiLabDashboard(intel,world),labCreate,labRun,labDecision,labRollback,replay:id=>replayPrediction(intel,id),experiment,discovery:world=>discoveryDashboard(intel,world),discoveryWrite,discoveryDue,historical:input=>historicalReplay(intel.discovery,input.world,input.startAt,input.endAt,input.stepMinutes,intel.mlops.runs)};
 }
