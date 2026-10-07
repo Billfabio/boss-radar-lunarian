@@ -5,6 +5,10 @@ import {TaskQueue} from '../runtime/task-queue.mjs';
 import {makeObservation} from '../normalization/observations.mjs';
 import {mergeObservation} from '../deduplication/events.mjs';
 import {appendLedger,verifyLedger} from '../event-sourcing/ledger.mjs';
+import {enqueueOutbox,processOutbox,outboxStats} from '../runtime/outbox.mjs';
+import {appendOperationalEvent} from '../runtime/operational-state.mjs';
+import {validateStartupState} from '../runtime/startup.mjs';
+import {replayCorrelation} from '../runtime/replay.mjs';
 
 const sources=ensureSources({}),now=Date.now();
 for(let i=0;i<3;i++)noteSource(sources,'otbosstracker',{ok:false,error:'fault-injection-offline',at:now+i});
@@ -31,3 +35,19 @@ assert.throws(()=>makeObservation({evidenceId:'bad-time',boss:'Fault Boss',world
 
 const ledger=[];appendLedger(ledger,'before_restart',{eventId:'evt-1'},now);const restored=JSON.parse(JSON.stringify(ledger));assert.equal(verifyLedger(restored).valid,true);appendLedger(restored,'after_restart',{eventId:'evt-2'},now+1);assert.equal(verifyLedger(restored).valid,true);
 console.log(JSON.stringify({kind:'fault-injection',sourceOfflineRecovery:true,sourceQualityDeteriorationQuarantine:true,rateLimitBurstProtection:true,queueRecovery:true,idempotency:true,invalidTimestampRejected:true,ledgerRestartRoundTrip:true,databaseFailure:'not-applicable-runtime-database-not-active',websocketFailure:'not-applicable-runtime-uses-sse-or-polling'},null,2));
+
+
+const restartState={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[]};
+enqueueOutbox(restartState,'critical-event',{id:'evt-42'},{priority:'CRITICAL',idempotencyKey:'evt-42',correlationId:'trace-chaos',maxAttempts:3});
+const serialized=JSON.stringify(restartState),afterRestart=JSON.parse(serialized),delivered=[];
+await processOutbox(afterRestart,{'critical-event':async p=>{delivered.push(p.id);return {ok:true};}},{persist:async()=>{},deadLetters:afterRestart.pipelineDeadLetters});
+assert.deepEqual(delivered,['evt-42']);assert.equal(outboxStats(afterRestart).pending,0);
+
+const corrupted={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[]};appendOperationalEvent(corrupted,'BOOT',{ok:true},{at:1000});corrupted.operational.events[0].payload.ok=false;
+assert.equal(validateStartupState(corrupted,{worlds:['Lunarian']}).ok,false);
+
+const replayState={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[],whatsapp:{communityEvidence:[{id:'e1',correlationId:'trace-r'}],candidates:[{id:'c1',correlationId:'trace-r',status:'PENDING',boss:'Ferumbras',world:'Lunarian'}]},groupChecks:[]};
+appendOperationalEvent(replayState,'EVIDENCE_CREATED',{evidenceId:'e1'},{at:1000,correlationId:'trace-r'});appendOperationalEvent(replayState,'CANDIDATE_CREATED',{candidateId:'c1'},{at:1001,correlationId:'trace-r'});
+assert.equal(replayCorrelation(replayState,'trace-r').replaySafe,true);
+
+console.log(JSON.stringify({kind:'fault-injection-247',restartOutboxReplay:true,startupCorruptionDetected:true,correlationReplay:true},null,2));
