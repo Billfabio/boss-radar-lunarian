@@ -148,34 +148,31 @@ async function poll() {
   if (monitoring) return;
   monitoring=true;
   try {
-    const data=await refresh(); lastPoll=Date.now();await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world));if(investigation)await investigation.tick();
-    if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}));}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
-    if (state.settings.world !== data.world || !state.settings.enabled || lastError) return;
-    const now=Date.now();
-    for (const prediction of data.pending) {
-      const alert=dueAlert(prediction,state.settings,now);
-      if (!alert) continue;
-      const sent=state.sent[alert.key] || [];
-      const when=alert.start?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(alert.start)):'';
-      const message={title:`${prediction.boss_name} • ${prediction.world}`,body:alert.kind==='round'?`Dia favorável segundo o histórico. Sua rodada está marcada para ${when}; prepare a checagem. Não é uma previsão de hora de spawn.`:'Histórico indica um dia favorável para procurar. Horário de spawn desconhecido.',tag:alert.key,url:'/',boss:prediction.boss_name};
-      intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'planned',message});
-      for (const sub of [...state.subscriptions]) {
-        if (sent.includes(sub.endpoint)) continue;
-        try {
-          const response=await sendPush(sub,message,vapid);
-          if (response.status===404 || response.status===410) { state.subscriptions=state.subscriptions.filter(s=>s.endpoint!==sub.endpoint); continue; }
-          if (!response.ok) throw new Error(`Entrega recusada (HTTP ${response.status})`);
-          sent.push(sub.endpoint); state.sent[alert.key]=sent;intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'delivered',message});
-          log({boss:prediction.boss_name,world:prediction.world,kind:alert.kind,result:'Enviado ao serviço de push'});
-          await persist(); broadcast('alert',message);
-        } catch(e) { intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'failed'});log({boss:prediction.boss_name,world:prediction.world,result:e.message}); }
-      }
+    await drainOutbox(50);
+    const data=await refresh();lastPoll=Date.now();
+    if(!state.operational.controls.automationsPaused){
+      await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world),{priority:'LOW',idempotencyKey:'discovery-tick:'+data.world+':'+Math.floor(lastPoll/60000)});
+      if(investigation&&!state.operational.controls.investigationDisabled){await investigation.tick();lastInvestigationTickAt=Date.now();}
+      if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}),{priority:'LOW',idempotencyKey:'discovery:'+data.world+':'+new Date().toISOString().slice(0,10)});}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
     }
-    // Preserve daily-cycle deduplication while retaining only the latest 5000 keys.
+    const now=Date.now();
+    if(!lastIntegrityRunAt||now-lastIntegrityRunAt>=5*60000){const audit=auditIntegrity(state,now);safeRepair(state,audit,now);lastIntegrityRunAt=now;await persist();}
+    if(!lastBackupRunAt||now-lastBackupRunAt>=6*3600000){try{const meta=await backupManager.backup(now);await backupManager.restoreTest(meta.slot,Date.now());lastBackupRunAt=now;}catch(e){await watchdog.beat('backup',{status:'FAILED',reason:String(e.message||e),critical:false,expectedIntervalMs:6*3600000,staleAfterMs:12*3600000,activityAt:now});watchdog.markManualIncident({component:'backup',kind:'BACKUP_VALIDATION_FAILED',severity:'high',reason:String(e.message||e),startedAt:now,correlationId:'health:backup'});}}
+    await syncOperationalHealth(now);await watchdog.check(now);
+    if(state.operational.controls.maintenanceMode||state.operational.controls.automationsPaused||state.settings.world!==data.world||!state.settings.enabled||lastError){await persist();return;}
+    for (const prediction of data.pending) {
+      const alert=dueAlert(prediction,state.settings,now);if(!alert)continue;
+      const sent=state.sent[alert.key]||[],when=alert.start?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(alert.start)):'';
+      const message={title:prediction.boss_name+' • '+prediction.world,body:alert.kind==='round'?'Dia favorável segundo o histórico. Sua rodada está marcada para '+when+'; prepare a checagem. Não é uma previsão de hora de spawn.':'Histórico indica um dia favorável para procurar. Horário de spawn desconhecido.',tag:alert.key,url:'/',boss:prediction.boss_name};
+      intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'planned',message});
+      for(const sub of state.subscriptions){if(sent.includes(sub.endpoint))continue;enqueueOutbox(state,'push_alert',{endpoint:sub.endpoint,message,sentKey:alert.key,alertMeta:{world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind}},{priority:'HIGH',idempotencyKey:'push:'+alert.key+':'+sub.endpoint,correlationId:'alert:'+alert.key,maxAttempts:5});}
+    }
+    await persist();await drainOutbox(50);
     const keys=Object.keys(state.sent);for(const key of keys.slice(0,Math.max(0,keys.length-5000)))delete state.sent[key];
-    await persist();
-  } catch(e) { lastError=e.message; broadcast('source-error',{error:e.message}); }
-  finally { monitoring=false; }
+    await persist();await syncOperationalHealth(Date.now());
+  } catch(e) {
+    lastError=e.message;appendOperationalEvent(state,'POLL_FAILURE',{error:String(e.message||e).slice(0,500)},{correlationId:'health:poll'});if(watchdog){watchdog.markManualIncident({component:'collection',kind:'POLL_FAILURE',severity:'high',reason:String(e.message||e),startedAt:Date.now(),correlationId:'health:poll'});await syncOperationalHealth(Date.now()).catch(()=>{});await watchdog.check(Date.now()).catch(()=>{});}broadcast('source-error',{error:e.message});
+  } finally { monitoring=false; }
 }
 function json(res,code,value) { res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(value)); }
 async function body(req) {
