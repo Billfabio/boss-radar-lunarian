@@ -59,3 +59,11 @@ test('Temporal Knowledge registry versions relationships and keeps graph feature
  s.discovery.versions=events.flatMap(e=>[{at:e.availableAt,event:e,hash:'h'+e.id}]);s.discovery.coverage=[{boss:'A',world:'World',startAt:T,endAt:asOf,knownAt:asOf,verified:true,continuous:true},{boss:'B',world:'World',startAt:T,endAt:asOf,knownAt:asOf,verified:true,continuous:true}];ensureTemporalKnowledge(s.discovery,T);const run=refreshTemporalKnowledge(s,'World',asOf),d=temporalKnowledgeDashboard(s,'World',asOf),feature=d.features.find(x=>x.sourceBoss==='A'&&x.targetBoss==='B');
  assert.ok(run.relationshipTests>0);assert.ok(d.counts.discovered>0);assert.ok(feature);assert.equal(feature.status,'DISCOVERED');assert.equal(feature.productionEligible,false);const q=queryTemporalKnowledge(s,'World',{kind:'before',boss:'B'},asOf);assert.ok(q.answer.some(x=>x.sourceEntity.id==='A'));assert.equal(q.evidenceRequired,true);
 });
+
+
+test('As-known-at relationship queries use the relationship version available at that instant',()=>{
+ const s=intelligence(),k=ensureTemporalKnowledge(s.discovery,T);k.relationshipRegistry.r1={id:'r1',kind:'boss_to_boss',world:'World',sourceEntity:{type:'Boss',id:'A'},targetEntity:{type:'Boss',id:'B'},window:{fromHours:3,toHours:6},status:'VALIDATED',validFrom:T+H,validUntil:null,discoveredAt:T+H,lastValidated:T+4*H,lastUpdatedAt:T+4*H,metrics:{sampleSize:100,lift:3},lineage:{anchorEventIds:[],targetEventIds:[]},versions:[{version:1,at:T+2*H,status:'DISCOVERED',metrics:{sampleSize:20,lift:1.5}},{version:2,at:T+4*H,status:'VALIDATED',metrics:{sampleSize:100,lift:3}}]};
+ const past=temporalKnowledgeDashboard(s,'World',T+3*H),future=temporalKnowledgeDashboard(s,'World',T+5*H);
+ assert.equal(past.topRelationships[0].status,'DISCOVERED');assert.equal(past.topRelationships[0].metrics.sampleSize,20);assert.equal(past.topRelationships[0].metrics.lift,1.5);
+ assert.equal(future.topRelationships[0].status,'VALIDATED');assert.equal(future.topRelationships[0].metrics.sampleSize,100);assert.equal(future.topRelationships[0].metrics.lift,3);
+});
