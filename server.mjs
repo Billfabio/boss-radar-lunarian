@@ -20,6 +20,7 @@ import { createStructuredLogger } from './observability/logger.mjs';
 import { issueSession,validSession,validPassword,loginHtml } from './security/session.mjs';
 import { RateLimiter } from './security/rate-limit.mjs';
 import { createInvestigationEngine } from './investigation/engine.mjs';
+import { buildExtensionPackage } from './extension-package.mjs';
 import {ensureOperational,appendOperationalEvent,traceEvents,componentView,setOperationalControls,recordConfigVersion} from './runtime/operational-state.mjs';
 import {createWatchdog} from './runtime/watchdog.mjs';
 import {enqueueOutbox,processOutbox,outboxStats,requeueDeadLetter,discardDeadLetter} from './runtime/outbox.mjs';
@@ -43,6 +44,7 @@ const DATA = join(ROOT, 'data');
 const bosstiary=JSON.parse(await readFile(join(ROOT,'bosstiary.json'),'utf8'));
 const outfitCache=new Map();
 const mapCache=new Map();
+let extensionPackageCache=null;
 await mkdir(DATA, { recursive:true });
 await mkdir(join(DATA,'group-images'), { recursive:true });
 let state;
@@ -407,7 +409,7 @@ const server=http.createServer(async(req,res)=>{
       res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(sprite.bytes);return;
     }
     const files={'/':'index.html','/sw.js':'sw.js','/logic.mjs':'logic.mjs','/bosstiary.mjs':'bosstiary.mjs','/boss-map-ui.mjs':'boss-map-ui.mjs','/group-checks.mjs':'group-checks.mjs','/group-ui.mjs':'group-ui.mjs','/whatsapp-ui.mjs':'whatsapp-ui.mjs','/notification-flow.mjs':'notification-flow.mjs','/character-ui.mjs':'character-ui.mjs','/intelligence-ui.mjs':'intelligence-ui.mjs','/discovery-ui.mjs':'discovery-ui.mjs','/app.js':'app.js','/styles.css':'styles.css'};
-    if(url.pathname==='/boss-radar-extension.zip'){const content=await readFile(join(ROOT,'boss-radar-extension.zip'));res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="boss-radar-extension.zip"','Cache-Control':'no-store'});res.end(content);return;}
+    if(url.pathname==='/boss-radar-extension.zip'){if(!extensionPackageCache)extensionPackageCache=await buildExtensionPackage(readFile,ROOT);res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="boss-radar-extension.zip"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(extensionPackageCache);return;}
     if(!files[url.pathname]) return json(res,404,{error:'Página não encontrada'});
     const content=await readFile(join(ROOT,files[url.pathname]));
     const type=url.pathname.endsWith('.css')?'text/css':url.pathname==='/'?'text/html':'application/javascript';
