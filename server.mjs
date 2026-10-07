@@ -20,6 +20,11 @@ import { createStructuredLogger } from './observability/logger.mjs';
 import { issueSession,validSession,validPassword,loginHtml } from './security/session.mjs';
 import { RateLimiter } from './security/rate-limit.mjs';
 import { createInvestigationEngine } from './investigation/engine.mjs';
+import {ensureOperational,appendOperationalEvent,traceEvents,componentView,setOperationalControls,recordConfigVersion} from './runtime/operational-state.mjs';
+import {createWatchdog} from './runtime/watchdog.mjs';
+import {enqueueOutbox,processOutbox,outboxStats,requeueDeadLetter,discardDeadLetter} from './runtime/outbox.mjs';
+import {auditIntegrity,safeRepair} from './runtime/integrity.mjs';
+import {createBackupManager} from './runtime/backup.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -44,6 +49,7 @@ let state;
 try { state = JSON.parse(await readFile(join(DATA,'state.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; state={ settings:{world:'Lunarian', leadMinutes:30, enabled:false, favoritesOnly:false, progress:{}}, subscriptions:[], sent:{}, log:[], checks:[] }; }
 state.settings.progress=Object.fromEntries(Object.entries(state.settings.progress).map(([name,p])=>[name,resolvedProgress(name,p,bosstiary)]));
+ensureOperational(state);
 let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
@@ -53,6 +59,7 @@ state.pipelineDeadLetters ||= [];
 const heavyQueue=new TaskQueue({concurrency:1,maxPending:8,deadLetters:state.pipelineDeadLetters,onDeadLetter:()=>persist()});
 const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSerializeMs:0,lastStateMs:0,lastRefreshMs:0};
 const storageHealth={lastSuccessAt:0,lastError:'',lastFailureAt:0,recoveryCount:0};
+let watchdog=null,backupManager=null,lastFrontendAt=0,lastInvestigationTickAt=0,lastIntegrityRunAt=0,lastBackupRunAt=0;
 let persistPromise=null,pendingSnapshot=null;
 function persist() {
   if(state.intelligence?.discovery)recordConfiguration(state.intelligence.discovery,state.settings.world,state.settings);
