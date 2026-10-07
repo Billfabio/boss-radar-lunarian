@@ -139,3 +139,9 @@ test('Server Save challenger requires an explicit known schedule and valid stati
  assert.equal(candidatePrediction('server_save_context_interval',controlled,{...params,saveLift:1}),null);
 });
 
+test('Server Save temporal experiment versions the schedule known at each asOf',()=>{
+ const s=intel(40);s.discovery={serverSaveSchedules:[{id:'save-v1',world:'World',hour:6,knownAt:T,validFrom:T,sourceRef:'verified'}]};
+ const r=temporalExperiment(s,'World','server_save_context_interval',T+5000*H,{boss:'Boss',parameters:{bucketFromHours:0,bucketToHours:6,saveLift:2,serverSaveWeight:.25}});
+ assert.ok(r.samples>0);assert.equal(r.leakagePassed,true);for(const id of r.datasetIds){const ds=s.mlops.datasets[id];assert.ok(ds.context.serverSaveSchedule);assert.ok(ds.context.serverSaveSchedule.knownAt<=ds.asOf);assert.ok(ds.context.serverSaveSchedule.validFrom<=ds.asOf);}
+});
+
