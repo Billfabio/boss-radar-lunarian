@@ -172,7 +172,7 @@ function leaderboardRows(intel,world){
 }
 function featureSummary(intel,world,at){
  const bosses=[...new Set(intel.events.filter(x=>x.world===world).map(x=>x.boss))],measured=bosses.map(boss=>({boss,result:featureImportance(intel.events,boss,world,at)})).filter(x=>x.result.status!=='insufficient'),gain=new Map(),unused=new Map();
- for(const row of measured){for(const f of row.result.features||[]){const x=gain.get(f.name)||[];if(Number.isFinite(f.maeIncreaseHours))x.push(f.maeIncreaseHours);gain.set(f.name,x);}for(const f of row.result.unusedFeatures||[])unused.set(f,(unused.get(f)||0)+1);}
+ for(const row of measured){for(const f of row.result.features||[]){const x=gain.get(f.name)||[];if(Number.isFinite(f.maeIncreaseHours)){x.push(f.maeIncreaseHours);if(f.maeIncreaseHours<=0)unused.set(f.name,(unused.get(f.name)||0)+1);}gain.set(f.name,x);}}
  return {measuredBosses:measured.length,topUseful:[...gain].map(([name,x])=>({name,bosses:x.length,meanMaeIncreaseHours:round(avg(x),3)})).sort((a,b)=>b.meanMaeIncreaseHours-a.meanMaeIncreaseHours),oftenUseless:[...unused].map(([name,bosses])=>({name,bosses})).sort((a,b)=>b.bosses-a.bosses),perBoss:measured.slice(0,100)};
 }
 
@@ -227,7 +227,7 @@ export function suggestExperiments(intel,world,at=Date.now()){
  const l=ensureAILab(intel),errors=Object.values(mlops(intel).errors||{}).filter(x=>x.world===world),suggestions=[];
  const byBoss=new Map();for(const e of errors){const x=byBoss.get(e.boss)||[];x.push(e);byBoss.set(e.boss,x);}
  for(const [boss,rows] of byBoss){const high=rows.filter(x=>Number.isFinite(x.errorMinutes)&&x.errorMinutes>120),drift=rows.filter(x=>x.causes?.includes('drift'));if(high.length>=3)suggestions.push({hypothesis:'Dar maior peso aos intervalos recentes reduz os erros extremos de '+boss+'.',world,boss,modelId:'robust_interval',reason:'repeated_large_errors',support:high.length});if(drift.length>=3)suggestions.push({hypothesis:'Um modelo robusto com memória recente melhora '+boss+' durante períodos de drift.',world,boss,modelId:'robust_interval',reason:'drift_cluster',support:drift.length});}
- const features=featureSummary(intel,world,at);for(const f of features.oftenUseless.slice(0,3))if(f.bosses>=3)suggestions.push({hypothesis:'Remover a feature '+f.name+' não piora o desempenho e reduz complexidade.',world,boss:null,modelId:'robust_interval',kind:'ablation',features:[f.name],reason:'ablation_candidate',support:f.bosses});
+ const features=featureSummary(intel,world,at);for(const f of features.oftenUseless.slice(0,3))if(f.bosses>=3){const parameters={recentWindow:10,recentShare:.2,driftRecentShare:.4,...(f.name==='recentIntervals'?{ablateRecent:true,recentShare:0,driftRecentShare:0}:f.name==='median'?{ablateHistory:true,recentShare:1,driftRecentShare:1}:{})};suggestions.push({hypothesis:'Remover a feature '+f.name+' não piora o desempenho e reduz complexidade.',world,boss:null,modelId:'robust_interval',kind:'ablation',features:[f.name],parameters,reason:'measured_ablation_candidate',support:f.bosses});}
  const existing=new Set(Object.values(l.experiments).map(x=>x.fingerprint));l.suggestions=suggestions.filter(x=>!existing.has(experimentFingerprint(x))).map(x=>({...x,id:'SUG-'+digest(x).slice(0,16),createdAt:at})).slice(0,100);return l.suggestions;
 }
 export function aiLabDashboard(intel,world,at=Date.now()){
