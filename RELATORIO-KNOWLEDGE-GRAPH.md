@@ -133,6 +133,42 @@ Snapshots de estado incluem, quando conhecidos naquele instante:
 
 Backfill é feito em lotes para não competir com produção.
 
+## Before-Spawn Contrastive Analysis
+
+O sistema compara o que apareceu antes de um spawn real com janelas negativas observáveis em que o boss não apareceu.
+
+Para cada sinal são mantidos:
+
+- positive/negative samples;
+- probabilidade before-spawn;
+- probabilidade de background;
+- lift;
+- FDR ajustado por Benjamini-Yekutieli;
+- atraso P25 / mediana / P75;
+- período analisado;
+- lineage dos eventos positivos;
+- lineage das janelas negativas.
+
+Um sinal só vira `CANDIDATE_SIGNAL` quando possui amostra, materialidade e significância ajustada suficientes.
+
+Sinais fortes entram no Graph Feature Store como `before_spawn_contrastive`, sempre em `DISCOVERED`, com `productionEligible=false`. Eles geram apenas uma hipótese `UNVALIDATED_HYPOTHESIS` para o AI Lab. Se o sinal deixa de passar o filtro estatístico, o conhecimento é versionado como `REJECTED`, sem apagar o histórico.
+
+## Server Save Analysis
+
+Server Save é tratado como hipótese temporal, nunca como regra fixa.
+
+A análise compara a distribuição de eventos por faixas desde o Server Save contra exposição de background observável. Só são usadas agendas que já eram conhecidas no `asOf` histórico.
+
+O Challenger `server_save_context_interval`:
+
+- exige bucket estatisticamente candidato;
+- exige lift > 1;
+- exige agenda Server Save explicitamente conhecida;
+- abstém quando `serverSaveHours` é desconhecido;
+- usa backtest bitemporal com `knownAt` e `validFrom` da agenda;
+- passa por Shadow, Quality Gate, aprovação humana e Canary;
+- nunca é promovido automaticamente.
+
 ## Novel State e estados semelhantes
 
 O Temporal Intelligence Engine calcula uma representação determinística do estado atual e compara com snapshots históricos.
@@ -160,7 +196,7 @@ Com `INSUFFICIENT_HISTORY`, nenhuma penalização é aplicada. A redução é tr
 
 ## Graph Feature Store
 
-Feature Store: versão 1.2.0.
+Feature Store: versão 1.3.0.
 
 Sinais adicionados:
 
@@ -169,7 +205,10 @@ Sinais adicionados:
 - bossesLast24h;
 - uniqueBossesLast24h;
 - relatedBossHoursAgo;
-- relatedBossAfterLastTarget.
+- relatedBossAfterLastTarget;
+- analogStateSamples;
+- analogBestSimilarity;
+- serverSaveHours quando uma agenda válida é explicitamente fornecida.
 
 Cada Graph Feature possui status:
 
@@ -185,11 +224,13 @@ O dataset MLOps guarda também `contextEvents`, garantindo reprodutibilidade e a
 
 Relações promissoras geram hipóteses `UNVALIDATED_HYPOTHESIS`, ranqueadas por suporte, lift, estabilidade e quality score.
 
-O AI Lab possui um Challenger específico:
+O AI Lab possui Challengers específicos para contexto temporal:
 
-`graph_context_interval`
+- `graph_context_interval`;
+- `analog_state_interval`;
+- `server_save_context_interval`.
 
-Ele só roda quando existe configuração explícita da relação:
+O `graph_context_interval` só roda quando existe configuração explícita da relação:
 
 - sourceBoss;
 - target boss;
@@ -233,11 +274,22 @@ Quando um modelo graph-context é utilizado em Canary/Champion promovido, a prev
 
 Isso permite explicar e reproduzir o contexto.
 
-## Relationship Drift
+## Relationship Drift e Evolution
 
 O registry compara força recente e anterior. Uma relação validada/ativa com mudança material pode virar DEGRADED.
 
-Relações degradadas não devem ser tratadas como sinal estável sem revalidação.
+A visão `Relationship Evolution` usa as versões históricas da mesma aresta para mostrar:
+
+- lift inicial;
+- lift atual;
+- variação recente;
+- variação desde a origem;
+- suporte atual;
+- significância ajustada;
+- transições de status;
+- flag `driftDetected`.
+
+Relações degradadas não devem ser tratadas como sinal estável sem revalidação. Essa visão é temporal/descritiva e não prova causalidade.
 
 ## Change Points e Clusters
 
@@ -249,10 +301,11 @@ Clusters continuam descritivos até demonstrarem utilidade preditiva.
 
 Consultas suportadas:
 
-- relações antes de um boss;
+- relações antes de um boss, unindo Relationship Registry + Before-Spawn contrastivo + hipóteses;
 - relações depois de um boss;
 - relações de fontes;
-- relationship drift;
+- Prediction Error relationships, global ou recalculado no escopo de um boss;
+- relationship drift + evolução temporal;
 - estados históricos semelhantes;
 - as-known-at.
 
@@ -274,7 +327,12 @@ Ela mostra:
 - as-known-at;
 - Historical Day Replay;
 - Source Relationship Graph;
+- Reporter Relationship Graph;
 - Sequence Mining;
+- Before-Spawn Contrastive Analysis;
+- Server Save Analysis;
+- Prediction Error Relationship Graph;
+- Relationship Evolution;
 - Graph Feature Store;
 - Hypothesis Queue;
 - Similar Historical States;
@@ -347,6 +405,8 @@ Não foi introduzido banco de grafos separado.
 Relações negativas são registradas, mas o primeiro Challenger graph-context automatizado usa relações positivas; transformar uma associação negativa em previsão exige experimento específico e seguro.
 
 Sequence Mining ainda é uma camada de descoberta; uma sequência não entra automaticamente como feature.
+
+O Prediction Error Relationship Graph associa contexto/modelo a erros resolvidos com baseline, risco relativo e FDR. Ele é diagnóstico: `productionEligible=false` e `causalityProven=false`.
 
 Reporter identities continuam pseudonimizadas e o sistema não cria perfis pessoais além do necessário para qualidade/independência de evidência.
 
