@@ -9,6 +9,7 @@ import {modelsForPrediction,monitorCanary,proposeOnlineUpdate} from './mlops/onl
 import {predictAdaptive} from './prediction/adaptive-engine.mjs';
 import {resolveForecasts} from './learning/model-performance.mjs';
 import {TaskQueue} from './runtime/task-queue.mjs';
+import {ensureAILab,createLabExperiment,beginExperiment,finishExperiment,refreshLiveExperiment,approveExperiment,applyLabModel,monitorLabCanary,aiLabDashboard} from './mlops/lab.mjs';
 const H=3600000,T=Date.parse('2025-01-01T00:00:00Z');
 function event(i,overrides={}){const at=T+i*72*H;return {id:'e'+i,boss:'Boss',world:'World',estimatedAt:at,startAt:at,endAt:at,updatedAt:at+60000,eventType:'appearance',status:'confirmed_auto',qualityStatus:'CONFIRMADO',dataQualityScore:95,confidence:.95,consensus:{confidence:.95},evidence:[{evidenceId:'x'+i,sourceId:'rubinot-official',sourceRef:'https://example.org/event/'+i,collectionMethod:'official_json',boss:'Boss',world:'World',eventType:'appearance',estimatedAt:at,startAt:at,endAt:at,precision:'minute',confidence:.95,collectedAt:at+60000,reportedAt:at+60000,processedAt:at+60000,quality:{version:'2.0.0',status:'CONFIRMADO',score:95,traceable:true,eligibleForLearning:true}}],...overrides};}
 const rows=n=>Array.from({length:n},(_,i)=>event(i));
@@ -29,3 +30,43 @@ test('Feature importance is measured only after enough temporal folds',()=>{asse
 test('Canary selection is deterministic and regression rolls back',()=>{const s=intel();ensureMLOps(s);s.mlops.rollouts['World|boss']={id:'u',status:'canary',models:{candidate:true},percentage:5,stage:0,stageStartedAt:1,gate:{champion:{maeMinutes:10,windowAccuracy:1}}};assert.deepEqual(modelsForPrediction(s,'Boss','World','same'),modelsForPrediction(s,'Boss','World','same'));s.forecasts=Array.from({length:20},(_,i)=>({boss:'Boss',world:'World',createdAt:2,resolvedAt:3,errorMinutes:20,windowHit:false,rollout:{id:'u',selected:true}}));assert.equal(monitorCanary(s,'Boss','World',4).status,'rolled_back');assert.equal(modelsForPrediction(s,'Boss','World','same').models,s.models);});
 test('Queue retries only declared idempotent jobs and preserves dead letters while processing recovers',async()=>{const letters=[],q=new TaskQueue({deadLetters:letters});assert.throws(()=>q.enqueue('unsafe',async()=>{}, {maxAttempts:2}),/idempotente/);let attempts=0;await assert.rejects(q.enqueue('bad',async()=>{attempts++;throw new Error('failure');},{idempotent:true,maxAttempts:3,payload:{eventId:'e'}}));assert.equal(attempts,3);assert.equal(letters[0].attempts,3);assert.equal(letters[0].payload.eventId,'e');assert.equal(await q.enqueue('good',async()=>42),42);assert.equal(q.stats().deadLetterCount,1);});
 test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,2);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
+
+
+function labBacktest(n=120){
+ const pairs=Array.from({length:n},(_,i)=>({pairId:'p'+i,boss:'Boss',world:'World',asOf:1000+i,resolvedAt:2000+i,datasetId:'d'+i,championErrorMinutes:100,challengerErrorMinutes:60,championWindowHit:true,challengerWindowHit:true,championConfidence:90,challengerConfidence:90,challengerLatencyMs:2,improvementMinutes:40}));
+ const rows=x=>x.map(p=>({pairId:p.pairId,boss:p.boss,world:p.world,errorMinutes:p.challengerErrorMinutes,windowHit:p.challengerWindowHit,confidence:p.challengerConfidence,latencyMs:p.challengerLatencyMs}));
+ const base=x=>x.map(p=>({pairId:p.pairId,boss:p.boss,world:p.world,errorMinutes:p.championErrorMinutes,windowHit:p.championWindowHit,confidence:p.championConfidence,latencyMs:0}));
+ const cut=Math.floor(n*.6),v=Math.floor(n*.8),cmp=(a,b)=>qualityGate(base(pairs.slice(a,b)),rows(pairs.slice(a,b)),{minSamples:20,temporalPassed:true,leakagePassed:true});
+ return {id:'bt-lab',samples:n,datasetIds:[],excluded:[],development:{},developmentComparison:cmp(0,cut),validation:cmp(cut,v),test:cmp(v,n),split:{development:[0,cut],validation:[cut,v],holdout:[v,n]},temporalPassed:true,leakagePassed:true,rows:rows(pairs),pairs};
+}
+test('AI Lab deduplicates hypotheses and keeps automatic model promotion disabled',()=>{
+ const s=intel();ensureMLOps(s);const lab=ensureAILab(s);assert.equal(lab.autoModelPromotion,false);
+ const a=createLabExperiment(s,{hypothesis:'Dar maior peso aos intervalos recentes melhora Boss.',world:'World',modelId:'robust_interval'}),b=createLabExperiment(s,{hypothesis:'  Dar maior peso aos intervalos recentes melhora Boss.  ',world:'World',modelId:'robust_interval'});
+ assert.equal(a.duplicate,false);assert.equal(b.duplicate,true);assert.equal(a.experiment.id,b.experiment.id);
+});
+test('AI Lab requires temporal holdout and enters Shadow only after historical gates',()=>{
+ const s=intel();ensureMLOps(s);const x=createLabExperiment(s,{hypothesis:'Intervalo robusto reduz o erro temporal do Boss fora da amostra.',world:'World',modelId:'robust_interval'}).experiment;beginExperiment(s,x.id,1000);
+ const done=finishExperiment(s,x.id,labBacktest(),{runtimeMs:50,at:2000});assert.equal(done.status,'SHADOW');assert.equal(done.result.historical.historicalGate.passed,true);assert.equal(done.result.historical.overfitRisk.detected,false);assert.equal(done.result.decision,'ENTER_SHADOW');
+});
+test('AI Lab live Shadow requires future paired samples before promotion eligibility',()=>{
+ const s=intel(30);ensureMLOps(s);const exp=createLabExperiment(s,{hypothesis:'Robust interval melhora Boss em eventos futuros reais.',world:'World',modelId:'robust_interval'}).experiment;beginExperiment(s,exp.id,1);finishExperiment(s,exp.id,labBacktest(),{runtimeMs:10,at:2});
+ const f=buildFeatures(s.events,'Boss','World',availableAt(s.events.at(-1))+1),ds=datasetSnapshot(s.mlops.datasets,f,{experiment:'live'});
+ for(let i=0;i<30;i++){s.mlops.runs.push({pairId:'live'+i,forecastId:'live'+i,mode:'Champion',modelId:'adaptive_ensemble',world:'World',boss:'Boss',datasetId:ds.id,asOf:3+i,resolvedAt:100+i,errorMinutes:100,windowHit:true,confidence:90,latencyMs:0});s.mlops.runs.push({pairId:'live'+i,forecastId:'live'+i,mode:'Shadow',modelId:'robust_interval',modelVersion:'1.0.0',world:'World',boss:'Boss',datasetId:ds.id,asOf:3+i,resolvedAt:100+i,errorMinutes:60,windowHit:true,confidence:90,confidenceRaw:90,latencyMs:2});}
+ const r=refreshLiveExperiment(s,exp.id,1000);assert.equal(r.status,'ELIGIBLE_FOR_PROMOTION');assert.equal(r.live.samples,30);assert.equal(r.result.recommendation,'PROMOTE');
+ const canary=approveExperiment(s,exp.id,{actor:'tester',reason:'all gates pass',at:1001});assert.equal(canary.percentage,10);assert.equal(s.mlops.lab.autoModelPromotion,false);
+});
+test('AI Lab Canary selection is deterministic and uses challenger calibration only after enough shadow samples',()=>{
+ const s=intel(30);ensureMLOps(s);const exp=createLabExperiment(s,{hypothesis:'Robust interval melhora o Boss com shadow calibrado.',world:'World',modelId:'robust_interval'}).experiment;beginExperiment(s,exp.id,1);finishExperiment(s,exp.id,labBacktest(),{runtimeMs:10,at:2});
+ const f=buildFeatures(s.events,'Boss','World',availableAt(s.events.at(-1))+1),ds=datasetSnapshot(s.mlops.datasets,f,{experiment:'live'});
+ for(let i=0;i<30;i++){s.mlops.runs.push({pairId:'z'+i,forecastId:'z'+i,mode:'Champion',modelId:'adaptive_ensemble',world:'World',boss:'Boss',datasetId:ds.id,asOf:3+i,resolvedAt:100+i,errorMinutes:100,windowHit:true,confidence:90,latencyMs:0});s.mlops.runs.push({pairId:'z'+i,forecastId:'z'+i,mode:'Shadow',modelId:'robust_interval',modelVersion:'1.0.0',world:'World',boss:'Boss',datasetId:ds.id,asOf:3+i,resolvedAt:100+i,errorMinutes:60,windowHit:true,confidence:90,confidenceRaw:90,latencyMs:2});}
+ refreshLiveExperiment(s,exp.id,1000);approveExperiment(s,exp.id,{at:1001});const base=predictAdaptive(s.events,'Boss','World',{},T+3000*H);let key='';for(let i=0;i<10000;i++){const k='key'+i;if(parseInt(digest(k).slice(0,8),16)%100<10){key=k;break;}}
+ const a=applyLabModel(s,base,'Boss','World',key,T+3000*H),b=applyLabModel(s,base,'Boss','World',key,T+3000*H);assert.equal(a.rollout.selected,true);assert.equal(a.prediction.labModelId,'robust_interval');assert.equal(a.prediction.predictedCenterAt,b.prediction.predictedCenterAt);assert.ok(a.prediction.calibration.samples>=20);
+});
+test('AI Lab Canary auto-rolls back on severe real-world regression',()=>{
+ const s=intel();ensureMLOps(s);const exp=createLabExperiment(s,{hypothesis:'Robust interval deve manter cauda de erro controlada.',world:'World',modelId:'robust_interval'}).experiment;beginExperiment(s,exp.id,1);finishExperiment(s,exp.id,labBacktest(),{runtimeMs:10,at:2});exp.status='ELIGIBLE_FOR_PROMOTION';exp.live={samples:30,gate:{passed:true}};const canary=approveExperiment(s,exp.id,{at:3});
+ s.forecasts=Array.from({length:20},(_,i)=>({id:'cf'+i,boss:'Boss',world:'World',createdAt:4,resolvedAt:5,actualAt:100000+i,errorMinutes:200,windowHit:false,confidence:90,labRollout:{id:canary.id,selected:true,latencyMs:2},labBaseline:{predictedCenterAt:100000+i,windowStart:99000+i,windowEnd:101000+i,confidence:90}}));
+ const result=monitorLabCanary(s,'Boss','World',6);assert.equal(result.status,'ROLLED_BACK');assert.equal(exp.status,'REJECTED');
+});
+test('AI Lab dashboard exposes sample-aware leaderboard and model card without fictitious metrics',()=>{
+ const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.0.0');
+});
