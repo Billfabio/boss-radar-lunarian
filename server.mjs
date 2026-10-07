@@ -26,6 +26,7 @@ import {createWatchdog} from './runtime/watchdog.mjs';
 import {enqueueOutbox,processOutbox,outboxStats,requeueDeadLetter,discardDeadLetter} from './runtime/outbox.mjs';
 import {auditIntegrity,safeRepair} from './runtime/integrity.mjs';
 import {createBackupManager} from './runtime/backup.mjs';
+import {ensureReliabilityTelemetry,recordReliabilitySample,detectOperationalRegressions,buildDailySystemReport,buildWeeklyReview} from './runtime/reliability-report.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -51,7 +52,7 @@ let state;
 try { state = JSON.parse(await readFile(join(DATA,'state.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; state={ settings:{world:'Lunarian', leadMinutes:30, enabled:false, favoritesOnly:false, progress:{}}, subscriptions:[], sent:{}, log:[], checks:[] }; }
 state.settings.progress=Object.fromEntries(Object.entries(state.settings.progress).map(([name,p])=>[name,resolvedProgress(name,p,bosstiary)]));
-ensureOperational(state);
+ensureOperational(state);ensureReliabilityTelemetry(state);
 let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
@@ -61,7 +62,7 @@ state.pipelineDeadLetters ||= [];
 const heavyQueue=new TaskQueue({concurrency:1,maxPending:8,deadLetters:state.pipelineDeadLetters,onDeadLetter:()=>persist()});
 const performanceStats={lastPersistMs:0,maxPersistMs:0,lastPersistBytes:0,lastSerializeMs:0,lastStateMs:0,lastRefreshMs:0};
 const storageHealth={lastSuccessAt:0,lastError:'',lastFailureAt:0,recoveryCount:0};
-let watchdog=null,backupManager=null,lastFrontendAt=0,lastInvestigationTickAt=0,lastIntegrityRunAt=0,lastBackupRunAt=0;
+let watchdog=null,backupManager=null,lastFrontendAt=0,lastInvestigationTickAt=0,lastIntegrityRunAt=0,lastBackupRunAt=0,lastReliabilitySampleAt=0;
 let persistPromise=null,pendingSnapshot=null;
 function persist() {
   if(state.intelligence?.discovery)recordConfiguration(state.intelligence.discovery,state.settings.world,state.settings);
@@ -160,7 +161,7 @@ async function poll() {
     const now=Date.now();
     if(!lastIntegrityRunAt||now-lastIntegrityRunAt>=5*60000){const audit=auditIntegrity(state,now);safeRepair(state,audit,now);lastIntegrityRunAt=now;await persist();}
     if(!lastBackupRunAt||now-lastBackupRunAt>=6*3600000){try{const meta=await backupManager.backup(now);await backupManager.restoreTest(meta.slot,Date.now());lastBackupRunAt=now;}catch(e){await watchdog.beat('backup',{status:'FAILED',reason:String(e.message||e),critical:false,expectedIntervalMs:6*3600000,staleAfterMs:12*3600000,activityAt:now});watchdog.markManualIncident({component:'backup',kind:'BACKUP_VALIDATION_FAILED',severity:'high',reason:String(e.message||e),startedAt:now,correlationId:'health:backup'});}}
-    await syncOperationalHealth(now);await watchdog.check(now);
+    await syncOperationalHealth(now);await watchdog.check(now);await sampleReliability(now);
     if(state.operational.controls.maintenanceMode||state.operational.controls.automationsPaused||state.settings.world!==data.world||!state.settings.enabled||lastError){await persist();return;}
     for (const prediction of data.pending) {
       const alert=dueAlert(prediction,state.settings,now);if(!alert)continue;
@@ -281,9 +282,14 @@ async function syncOperationalHealth(at=Date.now()){
  for(const src of h.sources||[]){const status=!src.active?'UNKNOWN':src.circuitState==='OPEN'?'UNAVAILABLE':src.circuitState==='HALF_OPEN'?'RECOVERING':src.lastError?'DEGRADED':src.lastSuccess?'HEALTHY':'UNKNOWN';await watchdog.beat('source:'+src.id,{status,reason:src.lastError||(!src.active?'Fonte desativada.':'Estado derivado das consultas reais.'),critical:false,expectedIntervalMs:240000,staleAfterMs:20*60000,activityAt:src.lastAttempt||src.lastSuccess||at,metrics:{reliability:src.reliability,latencyMs:src.averageLatencyMs,circuitState:src.circuitState,successRate:src.successRate}});}
  return {w,h,q,oq};
 }
+async function sampleReliability(at=Date.now()){
+ if(lastReliabilitySampleAt&&at-lastReliabilitySampleAt<5*60000)return;const health=watchdog.publicState(at),w=whatsapp.publicState(),q=heavyQueue.stats(),oq=outboxStats(state,at),snap=intelligence.snapshot(state.settings.world),components=health.components||[],known=components.filter(x=>x.effectiveStatus!=='UNKNOWN'),healthy=known.filter(x=>x.effectiveStatus==='HEALTHY').length;
+ recordReliabilitySample(state,{reliabilityScore:health.score,healthyComponentPct:known.length?Math.round(1000*healthy/known.length)/10:null,coveragePct:w.coverage?.coveragePct??null,errorCount:structured.errorsSince(86400000).length,captureLatencyP95:w.metrics?.backendDeliveryLatency?.p95??null,predictionLatencyMs:snap.observability?.prediction_latency??null,queueOldestAgeMs:q.oldestPendingAgeMs||0,outboxOldestAgeMs:oq.oldestAgeMs||0,candidates:w.candidates?.length??w.metrics?.candidateEvents??0,confirmedEvents:(snap.events||[]).filter(x=>/^confirmed_/.test(x.status)).length,dataQuality:snap.metrics?.dataQualityScore??null,predictionAccuracy:snap.metrics?.windowAccuracy??null},at);
+ lastReliabilitySampleAt=at;detectOperationalRegressions(state,at);buildDailySystemReport(state,at);buildWeeklyReview(state,at);await persist();
+}
 function systemPublicState(at=Date.now()){
  const health=watchdog.publicState(at),dlq=state.pipelineDeadLetters.filter(x=>x.status==='failed').slice(0,200).map(x=>({id:x.id,name:x.name,error:x.error,attempts:x.attempts,at:x.at,origin:x.origin,priority:x.priority||'NORMAL',correlationId:x.correlationId||'',idempotencyKey:x.idempotencyKey||''}));
- return {...health,controls:state.operational.controls,backup:backupManager.publicState(),integrity:state.operational.integrity,outbox:outboxStats(state,at),deadLetters:dlq,configVersions:state.operational.configVersions.slice(0,100)};
+ return {...health,controls:state.operational.controls,backup:backupManager.publicState(),integrity:state.operational.integrity,outbox:outboxStats(state,at),deadLetters:dlq,configVersions:state.operational.configVersions.slice(0,100),regressions:(state.operational.regressions||[]).slice(0,100),dailyReport:(state.operational.dailyReports||[])[0]||{status:'INSUFFICIENT_DATA'},weeklyReview:(state.operational.weeklyReviews||[])[0]||{status:'INSUFFICIENT_DATA'},sampleCount:(state.operational.samples||[]).length};
 }
 const server=http.createServer(async(req,res)=>{
   try {
