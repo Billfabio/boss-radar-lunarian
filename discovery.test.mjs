@@ -111,3 +111,9 @@ test('Prediction Error graph compares contexts against background without causal
  assert.equal(d.status,'MEASURED');assert.equal(d.samples,80);assert.ok(d.baselineLargeErrorRate>.4&&d.baselineLargeErrorRate<.5);assert.ok(r);assert.equal(r.status,'CANDIDATE_ASSOCIATION');assert.ok(r.riskRatio>3);assert.ok(r.test.q<=.05);assert.equal(r.productionEligible,false);assert.equal(r.causalityProven,false);assert.equal(r.direction,'HIGHER_ERROR_RISK');assert.ok(r.lineage.largeErrorForecastIds.length>=20);
 });
 
+test('Relationship evolution exposes lift decay and status transitions without production claims',()=>{
+ const s=intelligence(),k=ensureTemporalKnowledge(s.discovery,T);k.relationshipRegistry.evo={id:'evo',kind:'boss_to_boss',world:'World',sourceEntity:{type:'Boss',id:'A'},targetEntity:{type:'Boss',id:'B'},window:{fromHours:0,toHours:6},status:'DEGRADED',validFrom:T,validUntil:null,discoveredAt:T,lastValidated:T+3*H,lastUpdatedAt:T+3*H,metrics:{sampleSize:80,lift:1.2,driftScore:.4},lineage:{anchorEventIds:[],targetEventIds:[]},versions:[{version:1,at:T+H,status:'DISCOVERED',metrics:{sampleSize:40,lift:2.4,driftScore:0}},{version:2,at:T+2*H,status:'VALIDATED',metrics:{sampleSize:60,lift:2.0,driftScore:.1}},{version:3,at:T+3*H,status:'DEGRADED',metrics:{sampleSize:80,lift:1.2,driftScore:.4}}]};
+ const d=temporalKnowledgeDashboard(s,'World',T+4*H),row=d.relationshipEvolution.find(x=>x.id==='evo'),q=queryTemporalKnowledge(s,'World',{kind:'drift'},T+4*H);
+ assert.ok(row);assert.equal(row.driftDetected,true);assert.equal(row.currentStatus,'DEGRADED');assert.ok(row.recentLiftChangePct<=-40);assert.ok(row.liftChangeFromFirstPct<=-50);assert.equal(row.productionEligible,false);assert.equal(row.causalityProven,false);assert.ok(q.answer.evolution.some(x=>x.id==='evo'));
+});
+
