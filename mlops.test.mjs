@@ -9,7 +9,7 @@ import {modelsForPrediction,monitorCanary,proposeOnlineUpdate} from './mlops/onl
 import {predictAdaptive} from './prediction/adaptive-engine.mjs';
 import {resolveForecasts} from './learning/model-performance.mjs';
 import {TaskQueue} from './runtime/task-queue.mjs';
-import {ensureAILab,createLabExperiment,beginExperiment,finishExperiment,refreshLiveExperiment,approveExperiment,applyLabModel,monitorLabCanary,aiLabDashboard} from './mlops/lab.mjs';
+import {ensureAILab,createLabExperiment,beginExperiment,finishExperiment,refreshLiveExperiment,approveExperiment,applyLabModel,monitorLabCanary,aiLabDashboard,suggestExperiments} from './mlops/lab.mjs';
 const H=3600000,T=Date.parse('2025-01-01T00:00:00Z');
 function event(i,overrides={}){const at=T+i*72*H;return {id:'e'+i,boss:'Boss',world:'World',estimatedAt:at,startAt:at,endAt:at,updatedAt:at+60000,eventType:'appearance',status:'confirmed_auto',qualityStatus:'CONFIRMADO',dataQualityScore:95,confidence:.95,consensus:{confidence:.95},evidence:[{evidenceId:'x'+i,sourceId:'rubinot-official',sourceRef:'https://example.org/event/'+i,collectionMethod:'official_json',boss:'Boss',world:'World',eventType:'appearance',estimatedAt:at,startAt:at,endAt:at,precision:'minute',confidence:.95,collectedAt:at+60000,reportedAt:at+60000,processedAt:at+60000,quality:{version:'2.0.0',status:'CONFIRMADO',score:95,traceable:true,eligibleForLearning:true}}],...overrides};}
 const rows=n=>Array.from({length:n},(_,i)=>event(i));
@@ -143,5 +143,11 @@ test('Server Save temporal experiment versions the schedule known at each asOf',
  const s=intel(40);s.discovery={serverSaveSchedules:[{id:'save-v1',world:'World',hour:6,knownAt:T,validFrom:T,sourceRef:'verified'}]};
  const r=temporalExperiment(s,'World','server_save_context_interval',T+5000*H,{boss:'Boss',parameters:{bucketFromHours:0,bucketToHours:6,saveLift:2,serverSaveWeight:.25}});
  assert.ok(r.samples>0);assert.equal(r.leakagePassed,true);for(const id of r.datasetIds){const ds=s.mlops.datasets[id];assert.ok(ds.context.serverSaveSchedule);assert.ok(ds.context.serverSaveSchedule.knownAt<=ds.asOf);assert.ok(ds.context.serverSaveSchedule.validFrom<=ds.asOf);}
+});
+
+test('AI Lab prioritizes but does not auto-promote graph hypotheses that survive causal screening',()=>{
+ const s=intel(30);ensureMLOps(s);ensureAILab(s);s.discovery={versions:[],coverage:[],serverSaveSchedules:[],temporalKnowledge:{hypotheses:{h:{id:'h',world:'World',boss:'Boss',featureId:'f',relationId:'r',hypothesis:'A melhora Boss.',eligibleForExperiment:true,parameters:{sourceBoss:'A',windowHours:6,windowStartHours:0,medianDelayHours:4,graphWeight:.3,direction:'POSITIVE',relationId:'r',featureId:'f'},support:80,rankScore:100,lift:2.5}},causalRegistry:{c:{id:'c',relationshipId:'r',status:'CAUSAL_CANDIDATE',evidenceLevel:'MATCHED_OBSERVATIONAL_WITH_PLACEBO',matchedPairs:55,averageTreatmentEffectOnTreated:.4,causalTest:{q:.01},placeboTest:{q:.7},causalityProven:false}}}};
+ const suggestions=suggestExperiments(s,'World',T+3000*H),g=suggestions.find(x=>x.features?.includes('f'));
+ assert.ok(g);assert.equal(g.reason,'knowledge_graph_relationship_causal_screened');assert.equal(g.causalScreening.status,'CAUSAL_CANDIDATE');assert.equal(g.causalScreening.causalityProven,false);assert.equal(Object.values(s.mlops.lab.experiments).length,0);assert.equal(s.mlops.lab.settings.autoModelPromotion,false);
 });
 
