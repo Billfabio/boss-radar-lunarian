@@ -13,7 +13,7 @@ import {recomputeEvent} from './deduplication/events.mjs';
 import {createIntelligence} from './intelligence/service.mjs';
 import {discoveryHtml,historicalHtml} from './discovery-ui.mjs';
 import {spawnDistribution} from './discovery/distribution.mjs';
-import {predictionErrorRelationshipAnalysis} from './discovery/context-analysis.mjs';
+import {predictionErrorRelationshipAnalysis,confirmationLatencyAnalysis} from './discovery/context-analysis.mjs';
 import {reviewCandidate,evaluateSources} from './discovery/service.mjs';
 import {learnFromEvent} from './learning/reliability.mjs';
 import {digest} from './mlops/feature-store.mjs';
@@ -115,5 +115,12 @@ test('Relationship evolution exposes lift decay and status transitions without p
  const s=intelligence(),k=ensureTemporalKnowledge(s.discovery,T);k.relationshipRegistry.evo={id:'evo',kind:'boss_to_boss',world:'World',sourceEntity:{type:'Boss',id:'A'},targetEntity:{type:'Boss',id:'B'},window:{fromHours:0,toHours:6},status:'DEGRADED',validFrom:T,validUntil:null,discoveredAt:T,lastValidated:T+3*H,lastUpdatedAt:T+3*H,metrics:{sampleSize:80,lift:1.2,driftScore:.4},lineage:{anchorEventIds:[],targetEventIds:[]},versions:[{version:1,at:T+H,status:'DISCOVERED',metrics:{sampleSize:40,lift:2.4,driftScore:0}},{version:2,at:T+2*H,status:'VALIDATED',metrics:{sampleSize:60,lift:2.0,driftScore:.1}},{version:3,at:T+3*H,status:'DEGRADED',metrics:{sampleSize:80,lift:1.2,driftScore:.4}}]};
  const d=temporalKnowledgeDashboard(s,'World',T+4*H),row=d.relationshipEvolution.find(x=>x.id==='evo'),q=queryTemporalKnowledge(s,'World',{kind:'drift'},T+4*H);
  assert.ok(row);assert.equal(row.driftDetected,true);assert.equal(row.currentStatus,'DEGRADED');assert.ok(row.recentLiftChangePct<=-40);assert.ok(row.liftChangeFromFirstPct<=-50);assert.equal(row.productionEligible,false);assert.equal(row.causalityProven,false);assert.ok(Array.isArray(q.answer));assert.ok(q.evolution.some(x=>x.id==='evo'));
+});
+
+test('Confirmation Latency graph finds slow sources without changing source weights',()=>{
+ const s=intelligence();s.sources={fast:{name:'Fast'},slow:{name:'Slow'}};s.events=[];
+ for(let i=0;i<40;i++){const at=T+i*3*H,fastDelay=i<2?90:10,slowDelay=i<35?120:20;s.events.push({id:'lat'+i,boss:'Boss',world:'World',estimatedAt:at,status:'confirmed_auto',eventType:'appearance',qualityStatus:'CONFIRMADO',evidence:[{evidenceId:'fast'+i,sourceId:'fast',collectedAt:at+fastDelay*60000,processedAt:at+fastDelay*60000,reportedAt:at+fastDelay*60000,quality:{traceable:true,status:'CONFIRMADO'}},{evidenceId:'slow'+i,sourceId:'slow',collectedAt:at+slowDelay*60000,processedAt:at+slowDelay*60000,reportedAt:at+slowDelay*60000,quality:{traceable:true,status:'CONFIRMADO'}}]});}
+ const d=confirmationLatencyAnalysis(s,'World',T+200*H),slow=d.sources.find(x=>x.sourceId==='slow'),q=queryTemporalKnowledge(s,'World',{kind:'confirmations'},T+200*H);
+ assert.equal(d.status,'MEASURED');assert.equal(d.samples,80);assert.ok(slow);assert.equal(slow.status,'SLOW_ASSOCIATION');assert.ok(slow.riskRatio>10);assert.ok(slow.test.q<=.05);assert.equal(slow.productionEligible,false);assert.equal(slow.weightAdjustment,null);assert.equal(slow.causalityProven,false);assert.ok(q.answer.some(x=>x.sourceId==='slow'));
 });
 
