@@ -291,6 +291,28 @@ Para proteger produção:
 - snapshots históricos são preenchidos em lotes de até 250 por execução;
 - nenhum experimento é promovido automaticamente.
 
+## Graph Contribution
+
+O dashboard mede contribuição somente quando há atribuição experimental adequada.
+
+Para um ganho entrar em `Graph Contribution`:
+
+- o experimento precisa ser `graph_feature`;
+- precisa ter sido `PROMOTED`;
+- precisa possuir holdout Champion vs Challenger;
+- ambos precisam ter MAE finito;
+- são exigidos pelo menos 20 pares comparáveis.
+
+Quando esse critério é atendido, o painel mostra:
+
+- MAE do Champion sem a feature de grafo;
+- MAE do Challenger com a feature;
+- total de pares atribuíveis;
+- redução validada de MAE em minutos;
+- ganho percentual de holdout.
+
+Experimentos promovidos com amostra abaixo desse limite permanecem no histórico, mas não entram no cálculo de contribuição atribuível.
+
 ## Graph Health e cleanup
 
 O dashboard monitora:
