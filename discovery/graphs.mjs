@@ -1,19 +1,51 @@
 import {horizonLabel} from './canonical-events.mjs';
-import {mean,median,wilson} from './statistics.mjs';
+import {mean,median,wilson,adjustFDR} from './statistics.mjs';
+const H=3600000,DAY=24*H;
+const WINDOWS=[[0,1],[1,3],[3,6],[6,12],[12,24],[24,48],[48,72]];
+const quantile=(a,q)=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),p=(s.length-1)*q,i=Math.floor(p),f=p-i;return s[i]+(s[Math.min(i+1,s.length-1)]-s[i])*f;};
+const erf=x=>{const sign=x<0?-1:1,a=Math.abs(x),t=1/(1+.3275911*a),y=1-(((((1.061405429*t-1.453152027)*t+1.421413741)*t-.284496736)*t+.254829592)*t)*Math.exp(-a*a);return sign*y;};
+const normalCdf=z=>(1+erf(z/Math.SQRT2))/2;
+function twoProportionP(k1,n1,k0,n0){
+ if(!n1||!n0)return 1;const p1=k1/n1,p0=k0/n0,pooled=(k1+k0)/(n1+n0),se=Math.sqrt(Math.max(0,pooled*(1-pooled)*(1/n1+1/n0)));if(!se)return p1===p0?1:0;return Math.min(1,2*(1-normalCdf(Math.abs((p1-p0)/se))));
+}
+function observedLabel(events,coverage,boss,world,start,end,asOf){
+ if(end>asOf)return null;const observed=horizonLabel([],coverage,boss,world,start,end-start,asOf);if(observed.value!==0)return null;const label=horizonLabel(events,coverage,boss,world,start,end-start,asOf);return label.value==null?null:label.value;
+}
+function baselineWindows(events,coverage,boss,world,asOf,durationMs){
+ const relevant=events.filter(e=>e.world===world),first=relevant[0]?.spawn?.lower,last=Math.min(asOf,relevant.at(-1)?.spawn?.upper??asOf);if(!Number.isFinite(first)||last-first<durationMs)return [];
+ const maxWindows=1000,total=Math.floor((last-first)/durationMs),stride=Math.max(1,Math.ceil(total/maxWindows)),rows=[];
+ for(let i=0;i<total;i+=stride){const start=first+i*durationMs,end=start+durationMs,label=observedLabel(events,coverage,boss,world,start,end,asOf);if(label!=null)rows.push({at:start,y:label});}
+ return rows;
+}
+function relationshipWindow(events,coverage,anchors,to,world,asOf,lo,hi,baselineCache){
+ const duration=(hi-lo)*H,labels=[],delays=[],occurrenceIds=[];
+ for(const a of anchors){const start=a.spawn.estimate+lo*H,end=a.spawn.estimate+hi*H,label=observedLabel(events,coverage,to,world,start,end,asOf);if(label==null)continue;labels.push({at:a.spawn.estimate,y:label,id:a.id});if(label){const b=events.find(e=>e.boss===to&&e.world===world&&e.spawn.lower>start&&e.spawn.upper<=end);if(b){delays.push((b.spawn.estimate-a.spawn.estimate)/H);occurrenceIds.push(b.id);}}}
+ const key=to+'|'+duration,baseline=baselineCache.get(key)||baselineWindows(events,coverage,to,world,asOf,duration);baselineCache.set(key,baseline);
+ const k=labels.filter(x=>x.y===1).length,n=labels.length,bk=baseline.filter(x=>x.y===1).length,bn=baseline.length,conditional=n?k/n:null,base=bn?bk/bn:null,lift=conditional!=null&&base>0?conditional/base:null,p=conditional!=null&&base!=null?twoProportionP(k,n,bk,bn):1;
+ const recentCut=asOf-90*DAY,recent=labels.filter(x=>x.at>=recentCut),older=labels.filter(x=>x.at<recentCut),rp=recent.length?mean(recent.map(x=>x.y)):null,op=older.length?mean(older.map(x=>x.y)):null,drift=recent.length>=10&&older.length>=10&&op!=null?Math.abs(rp-op):null;
+ return {fromHours:lo,toHours:hi,samples:n,occurrences:k,baselineSamples:bn,baselineOccurrences:bk,conditionalProbability:conditional,baselineProbability:base,lift,ci95:n?wilson(k,n):null,baselineCi95:bn?wilson(bk,bn):null,test:{p,q:null},direction:conditional==null||base==null?'UNKNOWN':conditional>base?'POSITIVE':conditional<base?'NEGATIVE':'NEUTRAL',delayHours:{p25:quantile(delays,.25),median:median(delays),p75:quantile(delays,.75),mean:mean(delays)},recentStrength:rp,previousStrength:op,driftScore:drift,relationshipDrift:drift!=null&&drift>=.2,anchorIds:labels.map(x=>x.id).filter(Boolean).slice(0,200),occurrenceIds:[...new Set(occurrenceIds)].slice(0,200)};
+}
+function sequenceMining(events){
+ const exact=events.filter(e=>e.spawn.lower===e.spawn.upper).sort((a,b)=>a.spawn.estimate-b.spawn.estimate),pairs=new Map(),triples=new Map(),countBoss=new Map();for(const e of exact)countBoss.set(e.boss,(countBoss.get(e.boss)||0)+1);
+ for(let i=1;i<exact.length;i++){const a=exact[i-1],b=exact[i],delay=(b.spawn.estimate-a.spawn.estimate)/H;if(delay<=0||delay>72)continue;const key=a.boss+' → '+b.boss,row=pairs.get(key)||{pattern:key,bosses:[a.boss,b.boss],occurrences:0,delays:[]};row.occurrences++;row.delays.push(delay);pairs.set(key,row);}
+ for(let i=2;i<exact.length;i++){const a=exact[i-2],b=exact[i-1],c=exact[i],span=(c.spawn.estimate-a.spawn.estimate)/H;if(span<=0||span>72)continue;const key=[a.boss,b.boss,c.boss].join(' → '),row=triples.get(key)||{pattern:key,bosses:[a.boss,b.boss,c.boss],occurrences:0,delays1:[],delays2:[]};row.occurrences++;row.delays1.push((b.spawn.estimate-a.spawn.estimate)/H);row.delays2.push((c.spawn.estimate-b.spawn.estimate)/H);triples.set(key,row);}
+ const pairRows=[...pairs.values()].map(x=>{const denom=countBoss.get(x.bosses[0])||0,p=denom?x.occurrences/denom:null;return {...x,probability:p,intervalHours:{p25:quantile(x.delays,.25),median:median(x.delays),p75:quantile(x.delays,.75)},status:x.occurrences>=10?'DISCOVERED':'INSUFFICIENT_SAMPLE',productionEligible:false,causalityProven:false,delays:undefined};});
+ const tripleRows=[...triples.values()].map(x=>({...x,interval1Hours:{p25:quantile(x.delays1,.25),median:median(x.delays1),p75:quantile(x.delays1,.75)},interval2Hours:{p25:quantile(x.delays2,.25),median:median(x.delays2),p75:quantile(x.delays2,.75)},status:x.occurrences>=8?'DISCOVERED':'INSUFFICIENT_SAMPLE',productionEligible:false,causalityProven:false,delays1:undefined,delays2:undefined}));
+ return [...pairRows,...tripleRows].sort((a,b)=>b.occurrences-a.occurrences).slice(0,500);
+}
 export function bossGraph(events,coverage,experiments,world,asOf){
- const bosses=[...new Set(events.map(e=>e.boss))],edges=[],windows=[[0,2],[2,6],[6,12],[12,24]];
- if(bosses.length>100)return {nodes:bosses,edges:[],status:'limite de 100 bosses; segmente a análise'};
- for(const from of bosses)for(const to of bosses){if(from===to)continue;
-  const anchors=events.filter(e=>e.boss===from&&e.spawn.lower===e.spawn.upper),influence=[];
-  for(const [lo,hi] of windows){const labels=[],intervals=[],occurrencesAt=[];for(const a of anchors){const start=a.spawn.estimate+lo*3600000,end=a.spawn.estimate+hi*3600000;
-    // Only windows fully observable count in the denominator.
-    const observed=horizonLabel([],coverage,to,world,start,end-start,asOf);if(observed.value!==0)continue;const label=horizonLabel(events,coverage,to,world,start,end-start,asOf);if(label.value==null)continue;labels.push(label.value);if(label.value){const b=events.find(e=>e.boss===to&&e.spawn.lower>start&&e.spawn.upper<=end);if(b){intervals.push((b.spawn.estimate-a.spawn.estimate)/3600000);occurrencesAt.push(b.spawn.estimate);}}}
-   influence.push({fromHours:lo,toHours:hi,samples:labels.length,occurrences:labels.filter(Boolean).length,probability:labels.length>=20?mean(labels):null,ci95:labels.length>=20?wilson(labels.filter(Boolean).length,labels.length):null,meanIntervalHours:mean(intervals),medianIntervalHours:median(intervals),lastOccurrence:occurrencesAt.length?Math.max(...occurrencesAt):null});
-  }
-  if(influence.some(w=>w.occurrences)){const exp=experiments.filter(e=>e.world===world&&e.boss===to&&e.signal==='after:'+from).at(-1);edges.push({from,to,windows:influence,lastOccurrence:Math.max(...influence.map(w=>w.lastOccurrence||0))||null,predictiveValueProven:exp?.status==='SHADOW_MODE',experimentId:exp?.id??null,productionEligible:false,status:influence.some(w=>w.samples>=20)?'DESCRITIVO':'AMOSTRA_INSUFICIENTE'});}
+ const bosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],edges=[],tests=[],baselineCache=new Map();
+ if(bosses.length>100)return {nodes:bosses,edges:[],sequences:[],status:'limit_exceeded',numberOfTests:0,note:'Limite de 100 bosses; segmente a análise.'};
+ for(const from of bosses)for(const to of bosses){if(from===to)continue;const anchors=events.filter(e=>e.world===world&&e.boss===from&&e.spawn.lower===e.spawn.upper),influence=[];
+  for(const [lo,hi] of WINDOWS){const row=relationshipWindow(events,coverage,anchors,to,world,asOf,lo,hi,baselineCache);influence.push(row);if(row.samples>=10&&row.baselineSamples>=20)tests.push({from,to,row,test:row.test});}
+  edges.push({from,to,windows:influence,productionEligible:false,causalityProven:false,status:'TESTED'});
  }
- const sequences=new Map();for(let i=2;i<events.length;i++){const triple=events.slice(i-2,i+1);if(triple[2].spawn.upper-triple[0].spawn.lower>24*3600000||triple[0].spawn.upper>=triple[1].spawn.lower||triple[1].spawn.upper>=triple[2].spawn.lower)continue;const key=triple.map(e=>e.boss).join(' → ');sequences.set(key,(sequences.get(key)||0)+1);}
- return {nodes:bosses,edges,sequences:[...sequences].map(([pattern,occurrences])=>({pattern,occurrences,status:occurrences>=20?'DESCOBERTA':'AMOSTRA_INSUFICIENTE',productionEligible:false})),status:'descriptive_only'};
+ adjustFDR(tests,'test','BY');
+ for(const edge of edges){for(const w of edge.windows){const enough=w.samples>=20&&w.baselineSamples>=30&&w.occurrences>=5,material=w.lift!=null&&(w.lift>=1.5||w.lift<=.67),significant=w.test.q!=null&&w.test.q<=.05;w.status=!enough?'INSUFFICIENT_SAMPLE':significant&&material?'CANDIDATE_RELATIONSHIP':'REJECTED';w.confidence=w.status==='CANDIDATE_RELATIONSHIP'?Math.max(0,Math.min(1,1-w.test.q)):null;w.qualityScore=w.status==='CANDIDATE_RELATIONSHIP'?Math.round(100*Math.min(1,(w.samples/100))*Math.min(1,Math.abs(Math.log(Math.max(.01,w.lift)))/Math.log(3))*Math.max(.25,1-(w.driftScore||0))):0;}
+  const candidates=edge.windows.filter(w=>w.status==='CANDIDATE_RELATIONSHIP');edge.status=candidates.length?'CANDIDATE_RELATIONSHIP':edge.windows.some(w=>w.status==='REJECTED')?'REJECTED':'INSUFFICIENT_SAMPLE';edge.bestWindow=candidates.sort((a,b)=>b.qualityScore-a.qualityScore)[0]||null;
+  const exp=experiments.filter(e=>e.world===world&&e.boss===edge.to&&e.signal==='after:'+edge.from).at(-1);edge.predictiveValueProven=exp?.status==='SHADOW_MODE';edge.experimentId=exp?.id??null;
+ }
+ return {nodes:bosses,edges:edges.filter(e=>e.status!=='INSUFFICIENT_SAMPLE'||e.windows.some(w=>w.occurrences)),sequences:sequenceMining(events),status:'statistical_association_only',numberOfTests:tests.length,falseDiscoveryMethod:'Benjamini-Yekutieli',windows:WINDOWS,note:'Associações temporais não implicam causalidade. Relações candidatas ainda exigem experimento temporal e Shadow.'};
 }
 export function sourceGraph(events){
  const pairs=new Map(),latencies=new Map();
@@ -23,5 +55,5 @@ export function sourceGraph(events){
   for(const a of rows)for(const b of rows){if(a.sourceId===b.sourceId||!Number.isFinite(a.publishedAt)||!Number.isFinite(b.publishedAt)||b.publishedAt<=a.publishedAt)continue;
    const key=a.sourceId+'|'+b.sourceId,p=pairs.get(key)||{from:a.sourceId,to:b.sourceId,samples:0,matches:0,lags:[]};p.samples++;if(a.payloadHash&&a.payloadHash===b.payloadHash){p.matches++;p.lags.push((b.publishedAt-a.publishedAt)/60000);}pairs.set(key,p);}
  }
- return {nodes:[...new Set(events.flatMap(e=>e.evidence.map(x=>x.sourceId)))],edges:[...pairs.values()].map(p=>({from:p.from,to:p.to,samples:p.samples,matches:p.matches,copyEvidenceRate:p.matches/p.samples,meanLagMinutes:mean(p.lags),medianLagMinutes:median(p.lags),status:p.samples>=30&&p.matches/p.samples>=.95?'DEPENDENCIA_SUSPEITA':'AMOSTRA_INSUFICIENTE',weightApplied:false,reason:'Ordem de publicação e conteúdo idêntico sugerem dependência; não comprovam cópia nem direção causal.'})),latencies:[...latencies].map(([sourceId,rows])=>({sourceId,samples:rows.length,meanMinutes:mean(rows),medianMinutes:median(rows)}))};
+ return {nodes:[...new Set(events.flatMap(e=>e.evidence.map(x=>x.sourceId)))],edges:[...pairs.values()].map(p=>{const rate=p.samples?p.matches/p.samples:0,confidence=p.samples>=30?Math.min(1,p.samples/100)*rate:null;return {from:p.from,to:p.to,samples:p.samples,matches:p.matches,copyEvidenceRate:rate,meanLagMinutes:mean(p.lags),medianLagMinutes:median(p.lags),confidence,status:p.samples>=30&&rate>=.95?'DEPENDENCY_CANDIDATE':p.samples>=30?'REJECTED':'INSUFFICIENT_SAMPLE',weightApplied:false,reason:'Ordem de publicação e conteúdo idêntico sugerem dependência; não comprovam cópia nem direção causal.'};}),latencies:[...latencies].map(([sourceId,rows])=>({sourceId,samples:rows.length,meanMinutes:mean(rows),medianMinutes:median(rows)}))};
 }
