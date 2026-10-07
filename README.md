@@ -6,6 +6,8 @@
 
 > Camada de confiabilidade da IA: consulte [RELATORIO-CONFIABILIDADE-IA.md](RELATORIO-CONFIABILIDADE-IA.md).
 
+> Inteligência Investigativa do Lunarian: [RELATORIO-INVESTIGATION-ENGINE.md](RELATORIO-INVESTIGATION-ENGINE.md).
+
 > Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).\n> Evolução da camada de confiança: consulte [RELATORIO-CONFIABILIDADE-V4.md](RELATORIO-CONFIABILIDADE-V4.md).
 
 Plataforma de monitoramento, histórico e previsão de bosses do RubinOT.
