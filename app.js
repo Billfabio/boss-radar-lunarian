@@ -6,6 +6,7 @@ import {renderCharacter} from './character-ui.mjs';
 import { status, instant } from './logic.mjs';
 import {activateNotifications} from './notification-flow.mjs';
 import {renderIntelligence,initIntelligenceUI} from './intelligence-ui.mjs';
+import {renderSystemHealth,initSystemHealthUI} from './system-health-ui.mjs';
 const $ = id => document.getElementById(id);
 const safe = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function portrait(b){try{const u=new URL(b.image_url);if(['https://cdn.rubinottools.com','https://www.tibiawiki.com.br'].includes(u.origin))return `<img src="${safe(u.href)}" alt="" loading="lazy">`;}catch{}return safe(b.name.charAt(0));}
@@ -53,7 +54,7 @@ function render(){
   $('lead').value=String(model.settings.leadMinutes);$('favorites-only').checked=model.settings.favoritesOnly;$('monitor-enabled').checked=model.settings.enabled;
   $('push-title').textContent=model.settings.enabled&&model.subscriptions?(model.error?'Navegador inscrito · previsões indisponíveis':'Monitor habilitado'):'Ative os avisos no navegador';
   $('push-desc').textContent=model.settings.enabled&&model.subscriptions?`${model.subscriptions} navegador(es) inscrito(s). Última consulta: ${model.lastPoll?format(model.lastPoll):'aguardando'}.`:'Avisos em dias favoráveis; configure sua rodada para receber um lembrete antecipado.';
-  renderGrid();renderProgress();renderLogs();renderGroupUI();renderWhatsAppUI();renderIntelligence(model);
+  renderGrid();renderProgress();renderLogs();renderGroupUI();renderWhatsAppUI();renderIntelligence(model);renderSystemHealth(model);
 }
 function renderGrid(){
   const query=$('search').value.toLocaleLowerCase('pt-BR'),filter=$('filter').value,hide=$('hide-completed').checked;
@@ -92,7 +93,7 @@ function updateProgress(name,patch){
 function showView(view){
   currentView=view;
   for(const element of document.querySelectorAll('.stats,.alertbar,.world,#notification-hint'))element.hidden=['character','progress','checks'].includes(view);
-  const titles={intelligence:['Previsões que aprendem,<br>sem inventar certeza.','Entenda as evidências, a confiança e a evolução do algoritmo.'],character:['Seu personagem,<br>em um só lugar.','Personagens, aparência animada, skills e experiência.'],radar:['Cada boss, um passo<br>mais perto do completo.','Acompanhe janelas favoráveis e organize seu Bosstiary em um só lugar.'],progress:['Seu progresso,<br>boss por boss.','Registre suas kills e acompanhe as metas do jogo.'],checks:['Toda checagem<br>conta uma história.','Construa seu próprio histórico de encontros em Lunarian.'],alerts:['Prepare a próxima<br>rodada de checagens.','Ajuste quando e quais avisos você quer receber.']};
+  const titles={system:['Sistema saudável,<br>ou claramente degradado.','Monitore heartbeats, filas, incidentes, backups, integridade e recuperação automática.'],intelligence:['Previsões que aprendem,<br>sem inventar certeza.','Entenda as evidências, a confiança e a evolução do algoritmo.'],character:['Seu personagem,<br>em um só lugar.','Personagens, aparência animada, skills e experiência.'],radar:['Cada boss, um passo<br>mais perto do completo.','Acompanhe janelas favoráveis e organize seu Bosstiary em um só lugar.'],progress:['Seu progresso,<br>boss por boss.','Registre suas kills e acompanhe as metas do jogo.'],checks:['Toda checagem<br>conta uma história.','Construa seu próprio histórico de encontros em Lunarian.'],alerts:['Prepare a próxima<br>rodada de checagens.','Ajuste quando e quais avisos você quer receber.']};
   $('view-title').innerHTML=titles[view][0];$('view-desc').textContent=titles[view][1];
   for(const name of Object.keys(titles)) $(name+'-view').hidden=name!==view;
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
@@ -152,6 +153,7 @@ $('export-character').addEventListener('click',()=>{if(!characterModel?.characte
 initGroupUI({getModel:()=>model,getBosses:()=>bosses(true),post:api,reload:load,notify:toast});
 initWhatsAppUI({getModel:()=>model,post:api,reload:load,notify:toast});
 initIntelligenceUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initSystemHealthUI({getModel:()=>model,post:api,reload:load,notify:toast});
 $('intelligence-refresh').addEventListener('click',()=>action($('intelligence-refresh'),async()=>{await api('/api/refresh',{});await load();toast('Fontes consultadas e previsões recalculadas.');}));
 await load();
 void loadCharacterNames().then(()=>loadCharacter()).catch(e=>{$('character-content').textContent=e.message;});
