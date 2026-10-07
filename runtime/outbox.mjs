@@ -1,6 +1,7 @@
+import {randomUUID} from 'node:crypto';
 import {ensureOperational,appendOperationalEvent} from './operational-state.mjs';
 const PRIORITY={CRITICAL:0,HIGH:1,NORMAL:2,LOW:3};
-const id=()=>Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+const id=()=>randomUUID();
 export function enqueueOutbox(state,kind,payload,{priority='NORMAL',idempotencyKey='',correlationId='',maxAttempts=5,at=Date.now()}={}){
  const o=ensureOperational(state),key=String(idempotencyKey||'');if(key){const existing=o.outbox.find(x=>x.idempotencyKey===key)||o.outboxHistory.find(x=>x.idempotencyKey===key&&x.status==='DELIVERED');if(existing)return {item:existing,duplicate:true};}
  const item={id:'out-'+id(),kind:String(kind),payload,priority:PRIORITY[priority]!=null?priority:'NORMAL',idempotencyKey:key,correlationId:String(correlationId||''),status:'PENDING',attempts:0,maxAttempts:Math.max(1,Math.min(10,Number(maxAttempts)||5)),createdAt:at,nextAttemptAt:at,lastError:'',deliveredAt:null};
