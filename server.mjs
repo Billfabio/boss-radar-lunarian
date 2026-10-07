@@ -29,6 +29,7 @@ import {createBackupManager} from './runtime/backup.mjs';
 import {ensureReliabilityTelemetry,recordReliabilitySample,detectOperationalRegressions,buildDailySystemReport,buildWeeklyReview} from './runtime/reliability-report.mjs';
 import {validateStartupState,validatePendingOutboxHandlers,recordStartupRecovery} from './runtime/startup.mjs';
 import {replayCorrelation} from './runtime/replay.mjs';
+import {ensureOperations,runDecisionCycle,markDecisionAlertDispatched,applyAttentionAction,recordActionOutcome,operationsMetrics,operationsReplay} from './operations/engine.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -54,7 +55,7 @@ let state;
 try { state = JSON.parse(await readFile(join(DATA,'state.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; state={ settings:{world:'Lunarian', leadMinutes:30, enabled:false, favoritesOnly:false, progress:{}}, subscriptions:[], sent:{}, log:[], checks:[] }; }
 state.settings.progress=Object.fromEntries(Object.entries(state.settings.progress).map(([name,p])=>[name,resolvedProgress(name,p,bosstiary)]));
-ensureOperational(state);ensureReliabilityTelemetry(state);const startupValidation=validateStartupState(state,{worlds:WORLDS,authRequired:AUTH_REQUIRED,sitePassword:SITE_PASSWORD});if(!startupValidation.ok)throw new Error('Startup validation falhou: '+startupValidation.issues.map(x=>x.code).join(', '));
+ensureOperational(state);ensureReliabilityTelemetry(state);ensureOperations(state);const startupValidation=validateStartupState(state,{worlds:WORLDS,authRequired:AUTH_REQUIRED,sitePassword:SITE_PASSWORD});if(!startupValidation.ok)throw new Error('Startup validation falhou: '+startupValidation.issues.map(x=>x.code).join(', '));
 let vapid;
 try { vapid=JSON.parse(await readFile(join(DATA,'vapid.json'),'utf8')); }
 catch (e) { if (e.code !== 'ENOENT') throw e; vapid=createVapid(); await writeFile(join(DATA,'vapid.json'),JSON.stringify(vapid),{mode:0o600}); }
@@ -94,10 +95,10 @@ const intelligence=createIntelligence({state,persist,broadcast});
 let investigation=null;
 const structured=createStructuredLogger({state,persist});
 await intelligence.bootstrapChecks([...state.checks,...state.groupChecks]);
-async function refresh(force=false) {
+async function refresh(force=false,cacheTtlMs=240000) {
   const world=state.settings.world;
-  const old=cache.get(world);
-  if (!force && old && !old.catalogOnly && Date.now()-old.fetchedAt < 240000) return old;
+  const old=cache.get(world),ttl=Math.max(60000,Math.min(15*60000,Number(cacheTtlMs)||240000));
+  if (!force && old && !old.catalogOnly && Date.now()-old.fetchedAt < ttl) return old;
   if (refreshPromise) { await refreshPromise; if (cache.get(world)) return cache.get(world); }
   refreshPromise=(async()=>{
     const refreshStarted=performance.now(),capturedWorld=world;
@@ -154,19 +155,22 @@ async function poll() {
   monitoring=true;
   try {
     await drainOutbox(50);
-    const data=await refresh();lastPoll=Date.now();
+    const adaptiveTtl=Math.max(60000,Math.min(15*60000,Number(state.operations?.current?.polling?.globalIntervalMs)||240000)),data=await refresh(false,adaptiveTtl);lastPoll=Date.now();
     if(!state.operational.controls.automationsPaused){
       await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world),{priority:'LOW',idempotencyKey:'discovery-tick:'+data.world+':'+Math.floor(lastPoll/60000)});
       if(investigation&&!state.operational.controls.investigationDisabled){await investigation.tick();lastInvestigationTickAt=Date.now();}
       if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}),{priority:'LOW',idempotencyKey:'discovery:'+data.world+':'+new Date().toISOString().slice(0,10)});}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
     }
-    const now=Date.now();
-    if(!lastIntegrityRunAt||now-lastIntegrityRunAt>=5*60000){const audit=auditIntegrity(state,now);safeRepair(state,audit,now);lastIntegrityRunAt=now;await persist();}
-    if(!lastBackupRunAt||now-lastBackupRunAt>=6*3600000){try{const meta=await backupManager.backup(now);await backupManager.restoreTest(meta.slot,Date.now());lastBackupRunAt=now;}catch(e){await watchdog.beat('backup',{status:'FAILED',reason:String(e.message||e),critical:false,expectedIntervalMs:6*3600000,staleAfterMs:12*3600000,activityAt:now});watchdog.markManualIncident({component:'backup',kind:'BACKUP_VALIDATION_FAILED',severity:'high',reason:String(e.message||e),startedAt:now,correlationId:'health:backup'});}}
-    await syncOperationalHealth(now);await watchdog.check(now);await sampleReliability(now);
+    const now=Date.now(),decision=runDecisionCycle(state,{world:data.world,intelligence:intelligence.snapshot(data.world),investigation:investigation?.publicState(data.world)||{},whatsapp:whatsapp?.publicState()||{},system:{safeMode:state.operational.safeMode},settings:state.settings},now);
+    if(state.settings.enabled&&!state.operational.controls.maintenanceMode){
+      for(const alert of decision.alertsToSend||[]){if(state.settings.favoritesOnly&&!state.settings.progress?.[alert.boss]?.favorite)continue;const change=alert.change?.priority?(' Prioridade '+(alert.previousPriority??'—')+' → '+alert.priorityScore+'.'):'';const message={title:(alert.level==='CRITICAL'?'🔥 ':'')+alert.boss+' — '+alert.level,body:'Priority '+alert.priorityScore+'/100'+(alert.modelProbability==null?'':', probability '+alert.modelProbability+'%')+', decision confidence '+alert.decisionConfidence+'%, miss risk '+(alert.missedDetectionRisk??'—')+'/100.'+change,tag:alert.id,url:'/',boss:alert.boss};for(const sub of state.subscriptions)enqueueOutbox(state,'push_alert',{endpoint:sub.endpoint,message,sentKey:alert.id,alertMeta:{world:alert.world,boss:alert.boss,key:alert.id,kind:'decision_'+alert.level.toLowerCase()}},{priority:alert.level==='CRITICAL'?'CRITICAL':'HIGH',idempotencyKey:'push:'+alert.id+':'+sub.endpoint,correlationId:'decision:'+alert.id,maxAttempts:5});markDecisionAlertDispatched(state,alert.id,now);broadcast('update',{kind:'decision-alert',boss:alert.boss,level:alert.level});}}
+    const nowAfterDecision=Date.now();
+    if(!lastIntegrityRunAt||nowAfterDecision-lastIntegrityRunAt>=5*60000){const audit=auditIntegrity(state,nowAfterDecision);safeRepair(state,audit,nowAfterDecision);lastIntegrityRunAt=nowAfterDecision;await persist();}
+    if(!lastBackupRunAt||nowAfterDecision-lastBackupRunAt>=6*3600000){try{const meta=await backupManager.backup(nowAfterDecision);await backupManager.restoreTest(meta.slot,Date.now());lastBackupRunAt=nowAfterDecision;}catch(e){await watchdog.beat('backup',{status:'FAILED',reason:String(e.message||e),critical:false,expectedIntervalMs:6*3600000,staleAfterMs:12*3600000,activityAt:now});watchdog.markManualIncident({component:'backup',kind:'BACKUP_VALIDATION_FAILED',severity:'high',reason:String(e.message||e),startedAt:nowAfterDecision,correlationId:'health:backup'});}}
+    await syncOperationalHealth(nowAfterDecision);await watchdog.check(nowAfterDecision);await sampleReliability(nowAfterDecision);
     if(state.operational.controls.maintenanceMode||state.operational.controls.automationsPaused||state.settings.world!==data.world||!state.settings.enabled||lastError){await persist();return;}
     for (const prediction of data.pending) {
-      const alert=dueAlert(prediction,state.settings,now);if(!alert)continue;
+      const alert=dueAlert(prediction,state.settings,nowAfterDecision);if(!alert)continue;
       const sent=state.sent[alert.key]||[],when=alert.start?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(alert.start)):'';
       const message={title:prediction.boss_name+' • '+prediction.world,body:alert.kind==='round'?'Dia favorável segundo o histórico. Sua rodada está marcada para '+when+'; prepare a checagem. Não é uma previsão de hora de spawn.':'Histórico indica um dia favorável para procurar. Horário de spawn desconhecido.',tag:alert.key,url:'/',boss:prediction.boss_name};
       intelligence.recordAlert({world:prediction.world,boss:prediction.boss_name,key:alert.key,kind:alert.kind,status:'planned',message});
@@ -233,7 +237,7 @@ async function reliableRemoveChecks(records=[]){
  enqueueOutbox(state,'intelligence_remove_checks',{records},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'EVENT_REMOVAL_QUEUED',{recordIds:ids},{correlationId,idempotencyKey:'remove-queued:'+key});await persist();await drainOutbox(10);return {queued:true};
 }
 async function reliableInvestigationStart(candidate){
- const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-start:'+candidate.id;enqueueOutbox(state,'investigation_start',{candidate},{priority:'HIGH',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CANDIDATE_INVESTIGATION_QUEUED',{candidateId:candidate.id,boss:candidate.boss},{correlationId,idempotencyKey:'candidate-investigation:'+candidate.id});await persist();await drainOutbox(10);const found=investigation.publicState(candidate.world).cases.find(x=>x.candidateId===candidate.id);if(found)return found;const pending=state.operational.outbox.find(x=>x.idempotencyKey===key);if(pending)throw new Error(pending.lastError||'Investigação preservada na fila para retry');throw new Error('Investigação ainda não disponível');
+ const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-start:'+candidate.id,opsPriority=state.operations?.current?.bosses?.find(x=>x.boss===candidate.boss)?.priorityScore,queuePriority=Number(opsPriority)>=85?'CRITICAL':'HIGH';enqueueOutbox(state,'investigation_start',{candidate},{priority:queuePriority,idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CANDIDATE_INVESTIGATION_QUEUED',{candidateId:candidate.id,boss:candidate.boss},{correlationId,idempotencyKey:'candidate-investigation:'+candidate.id});await persist();await drainOutbox(10);const found=investigation.publicState(candidate.world).cases.find(x=>x.candidateId===candidate.id);if(found)return found;const pending=state.operational.outbox.find(x=>x.idempotencyKey===key);if(pending)throw new Error(pending.lastError||'Investigação preservada na fila para retry');throw new Error('Investigação ainda não disponível');
 }
 async function reliableInvestigationDecision(candidate,decision){
  const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-decision:'+candidate.id+':'+decision.outcome;enqueueOutbox(state,'investigation_decision',{candidate,decision},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'HUMAN_DECISION_QUEUED',{candidateId:candidate.id,outcome:decision.outcome},{correlationId,idempotencyKey:'human-decision:'+key});await persist();await drainOutbox(10);return {queued:true};
@@ -327,6 +331,9 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/system/source'){const id=String(input.id||''),source=state.intelligence?.sources?.[id];if(!source)throw new Error('Fonte não encontrada');if(typeof input.active!=='boolean')throw new Error('Estado da fonte inválido');source.active=input.active;const disabled=new Set(state.operational.controls.disabledSources||[]);if(input.active)disabled.delete(id);else disabled.add(id);state.operational.controls.disabledSources=[...disabled];recordConfigVersion(state,'source:'+id,{active:input.active},{actor:'site-admin'});appendOperationalEvent(state,'SOURCE_KILL_SWITCH',{sourceId:id,active:input.active},{correlationId:'config:source:'+id});await persist();return json(res,200,{id,active:source.active});}
       if(url.pathname==='/api/system/config/rollback'){const row=state.operational.configVersions.find(x=>x.id===input.id);if(!row)throw new Error('Versão de configuração não encontrada');if(row.name==='operational-controls')setOperationalControls(state,row.value,{actor:'site-admin-rollback'});else if(row.name==='settings')state.settings=validSettings(row.value);else if(row.name.startsWith('source:')){const id=row.name.slice(7),source=state.intelligence?.sources?.[id];if(!source)throw new Error('Fonte da configuração não existe');source.active=!!row.value.active;}else throw new Error('Rollback automático não suportado para esta configuração');appendOperationalEvent(state,'CONFIG_ROLLBACK',{configId:row.id,name:row.name},{correlationId:'config:rollback'});await persist();return json(res,200,{ok:true,name:row.name});}
       if(url.pathname.startsWith('/api/whatsapp/')){const result=await whatsapp.control(url.pathname,input);if(!result)return json(res,404,{error:'Ação inválida'});broadcast('update',{});return json(res,200,result);}if(url.pathname==='/api/investigation/wait')return json(res,200,await investigation.wait(String(input.id||'')));if(url.pathname==='/api/investigation/backtest')return json(res,200,investigation.backtest());
+      if(url.pathname==='/api/operations/action'){const world=WORLDS.includes(input.world)?input.world:state.settings.world,boss=String(input.boss||'').slice(0,140);if(!boss)throw new Error('Boss inválido');const result=applyAttentionAction(state,{world,boss,action:String(input.action||''),minutes:input.minutes});await persist();broadcast('update',{kind:'operations-attention',boss});return json(res,200,result);}
+      if(url.pathname==='/api/operations/action-outcome'){const result=recordActionOutcome(state,{...input,world:WORLDS.includes(input.world)?input.world:state.settings.world});await persist();return json(res,200,result);}
+      if(url.pathname==='/api/operations/replay'){const world=WORLDS.includes(input.world)?input.world:state.settings.world,startAt=Number(input.startAt),endAt=Number(input.endAt);if(!Number.isFinite(startAt)||!Number.isFinite(endAt)||endAt<startAt||endAt-startAt>31*86400000)throw new Error('Período de replay inválido');return json(res,200,operationsReplay(state,world,startAt,endAt));}
       if(url.pathname==='/api/settings') { const next=validSettings(input);recordConfigVersion(state,'settings',next,{actor:'site-admin'});state.settings=next;await persist();json(res,200,state.settings);void poll();return; }
       if(url.pathname==='/api/subscribe') {
         if(!allowedEndpoint(input.endpoint)||typeof input.keys?.p256dh!=='string'||typeof input.keys?.auth!=='string') throw new Error('Este navegador não forneceu uma inscrição de notificações suportada. Abra http://127.0.0.1:4317/ no Chrome, Edge ou Firefox e tente novamente.');
@@ -397,6 +404,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/system/trace'){const id=String(url.searchParams.get('correlation_id')||'');if(!id||id.length>160)throw new Error('correlation_id inválido');return json(res,200,{correlationId:id,events:traceEvents(state,id)});}
     if(url.pathname==='/api/system/replay'){const id=String(url.searchParams.get('correlation_id')||'');if(!id||id.length>160)throw new Error('correlation_id inválido');return json(res,200,replayCorrelation(state,id));}
     if(url.pathname==='/api/investigation')return json(res,200,investigation.publicState(state.settings.world));
+    if(url.pathname==='/api/operations'){const intel=intelligence.snapshot(state.settings.world);if(!state.operations?.current||state.operations.current.world!==state.settings.world)runDecisionCycle(state,{world:state.settings.world,intelligence:intel,investigation:investigation.publicState(state.settings.world),whatsapp:whatsapp.publicState(),system:{safeMode:state.operational.safeMode},settings:state.settings});return json(res,200,{...state.operations.current,metrics:operationsMetrics(state,intel,state.settings.world)});}
     if(url.pathname==='/api/intelligence/mlops')return json(res,200,intelligence.mlops(state.settings.world));
     if(url.pathname==='/api/intelligence/ai-lab')return json(res,200,intelligence.aiLab(state.settings.world));
     if(url.pathname==='/api/intelligence/discovery')return json(res,200,await heavyQueue.enqueue('discovery-dashboard:'+state.settings.world,()=>intelligence.discovery(state.settings.world)));
@@ -405,7 +413,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
       const stateStarted=performance.now();let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
-      lastFrontendAt=Date.now();await watchdog.beat('frontend',{status:'HEALTHY',reason:'Painel solicitou estado com sucesso.',critical:false,expectedIntervalMs:60000,staleAfterMs:180000,activityAt:lastFrontendAt});const intelligent=intelligence.snapshot(state.settings.world),payload={settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),investigation:investigation.publicState(state.settings.world),system:systemPublicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS};
+      lastFrontendAt=Date.now();await watchdog.beat('frontend',{status:'HEALTHY',reason:'Painel solicitou estado com sucesso.',critical:false,expectedIntervalMs:60000,staleAfterMs:180000,activityAt:lastFrontendAt});const intelligent=intelligence.snapshot(state.settings.world),ops=runDecisionCycle(state,{world:state.settings.world,intelligence:intelligent,investigation:investigation.publicState(state.settings.world),whatsapp:whatsapp.publicState(),system:{safeMode:state.operational.safeMode},settings:state.settings}),payload={settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),investigation:investigation.publicState(state.settings.world),operations:{...ops,metrics:operationsMetrics(state,intelligent,state.settings.world)},system:systemPublicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS};
       performanceStats.lastStateMs=Math.round((performance.now()-stateStarted)*10)/10;return json(res,200,payload);
     }
     if(url.pathname==='/api/events') {
