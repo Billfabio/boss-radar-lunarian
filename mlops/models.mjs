@@ -7,6 +7,7 @@ export const MODEL_SPECS={
  graph_context_interval:{name:'Intervalo com contexto temporal do Knowledge Graph',version:'1.0.0',status:'Shadow',features:['median','mean5','driftScore','bossesLast6h','bossesLast12h','bossesLast24h','relatedBossHoursAgo','relatedBossAfterLastTarget']}
 };
 export function candidatePrediction(name,features,parameters={}){
+ if(name==='graph_context_interval'&&(!String(parameters.sourceBoss||'').trim()||!Number.isFinite(Number(parameters.windowHours))||Number(parameters.windowHours)<=0||!Number.isFinite(Number(parameters.medianDelayHours))||Number(parameters.medianDelayHours)<=0))return null;
  const xs=features.intervals,v=features.values,last=features.rows.at(-1)?.estimatedAt;if(xs.length<5||last==null||v.preciseSamples<5)return null;
  const recentWindow=Math.max(3,Math.min(30,Number(parameters.recentWindow)||10));let baseShare=Math.max(0,Math.min(.8,Number.isFinite(Number(parameters.recentShare))?Number(parameters.recentShare):.2)),driftShare=Math.max(baseShare,Math.min(.9,Number.isFinite(Number(parameters.driftRecentShare))?Number(parameters.driftRecentShare):.4));if(parameters.ablateRecent===true){baseShare=0;driftShare=0;}if(parameters.ablateHistory===true){baseShare=1;driftShare=1;}
  let center=quantile(xs,Math.max(.1,Math.min(.9,Number(parameters.quantile)||.5))),recentWeight=0,longHistoryWeight=1,graphApplied=false,graphTargetHours=null;
