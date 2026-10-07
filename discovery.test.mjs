@@ -67,3 +67,10 @@ test('As-known-at relationship queries use the relationship version available at
  assert.equal(past.topRelationships[0].status,'DISCOVERED');assert.equal(past.topRelationships[0].metrics.sampleSize,20);assert.equal(past.topRelationships[0].metrics.lift,1.5);
  assert.equal(future.topRelationships[0].status,'VALIDATED');assert.equal(future.topRelationships[0].metrics.sampleSize,100);assert.equal(future.topRelationships[0].metrics.lift,3);
 });
+
+
+test('Sequence mining compares conditional probability with a baseline and controls false discovery',()=>{
+ const events=[];let n=0;for(let cycle=0;cycle<30;cycle++)for(const boss of ['A','B','C','X','B','D']){const at=T+n++*H;events.push({id:'seq-'+n,boss,world:'World',status:'CONFIRMADO',spawn:{lower:at,upper:at,estimate:at},availableAt:at+1000,evidence:[]});}
+ const g=bossGraph(events,[],[],'World',T+n*H+H),seq=g.sequences.find(x=>x.pattern==='A → B');
+ assert.ok(seq);assert.ok(seq.samples>=30);assert.ok(seq.probability>seq.baselineProbability);assert.ok(seq.lift>2);assert.ok(Number.isFinite(seq.test.q));assert.equal(seq.status,'DISCOVERED');assert.equal(seq.productionEligible,false);assert.equal(seq.causalityProven,false);
+});
