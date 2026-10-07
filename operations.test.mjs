@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {runDecisionCycle,ensureOperations,applyAttentionAction,operationsMetrics,DECISION_ENGINE_VERSION} from './operations/engine.mjs';
+import {runDecisionCycle,ensureOperations,applyAttentionAction,operationsMetrics,dailyOperationsReview,DECISION_ENGINE_VERSION} from './operations/engine.mjs';
 
 const H=3600000,T=Date.parse('2026-10-07T12:00:00Z');
 function prediction(boss='Ferumbras',overrides={}){
@@ -35,3 +35,13 @@ test('Follow closely changes refresh cadence but never model probability or prio
 test('Operations metrics are prospective and report insufficient data before enough confirmed events',()=>{
  const state={};ensureOperations(state,T);runDecisionCycle(state,context(),T);const m=operationsMetrics(state,context().intelligence,'Lunarian',T+H);assert.equal(m.status,'INSUFFICIENT_DATA');assert.equal(m.confirmedEvents,0);assert.equal(m.top1HitRate,null);
 });
+
+test('Decision challenger runs only in Shadow and backtest stays insufficient before prospective sample',()=>{
+ const state={},c=context({coverage:55});runDecisionCycle(state,c,T);const row=state.operations.current.bosses[0],metrics=operationsMetrics(state,c.intelligence,'Lunarian',T+H);
+ assert.equal(state.operations.decisionChampion.status,'CHAMPION');assert.equal(state.operations.challengers[0].status,'SHADOW');assert.ok(Number.isFinite(row.shadowPriority.score));assert.equal(metrics.decisionModels.autoPromotion,false);assert.equal(metrics.decisionModels.decision,'INSUFFICIENT_DATA');assert.equal(metrics.decisionModels.challengers[0].status,'SHADOW');
+});
+test('Daily operations review exposes real investigation detection path without inventing missing signals',()=>{
+ const state={},c=context();c.investigation.cases=[{id:'i1',candidateId:'c1',boss:'Ferumbras',world:'Lunarian',status:'CONFIRMED',decidedAt:T+10*60000,evidence:[{id:'e1',sourceId:'whatsapp-group',positive:true,canConfirm:true,observedAt:T,evidenceStrength:.7},{id:'e2',sourceId:'rubinot-official',positive:true,canConfirm:true,observedAt:T+2*60000,evidenceStrength:.95}]}];runDecisionCycle(state,c,T);const d=dailyOperationsReview(state,c.intelligence,c.investigation,'Lunarian',T+H);
+ assert.equal(d.detectionPaths.length,1);assert.equal(d.detectionPaths[0].firstSignal.sourceId,'whatsapp-group');assert.equal(d.detectionPaths[0].decisiveSignal.sourceId,'rubinot-official');assert.equal(d.status,'INSUFFICIENT_DATA');
+});
+
