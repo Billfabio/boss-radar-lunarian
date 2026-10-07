@@ -79,7 +79,7 @@ export function noveltyAssessment(intel,world,asOf=Date.now(),limit=20){
 export function noveltyConfidenceGuard(assessment,currentConfidence){
  const confidence=Number(currentConfidence);if(!Number.isFinite(confidence))return {applied:false,confidenceCap:null,adjustedConfidence:currentConfidence,adjustment:0,reason:'confidence_unavailable'};
  if(!assessment||assessment.status!=='NOVEL_STATE'||assessment.samples<10||!Number.isFinite(assessment.noveltyScore))return {applied:false,confidenceCap:null,adjustedConfidence:confidence,adjustment:0,reason:assessment?.status==='INSUFFICIENT_HISTORY'?'insufficient_historical_states':'state_not_novel'};
- const p=assessment.policy||{},threshold=Number(p.novelStateThreshold)||.45,minCap=Number(p.minConfidenceCap)||60,maxPenalty=Number(p.maxConfidencePenalty)||40,scale=Math.max(0,Math.min(1,(assessment.noveltyScore-threshold)/Math.max(.01,1-threshold))),cap=Math.max(minCap,Math.round(100-maxPenalty*(.5+.5*scale))),adjusted=Math.min(confidence,cap);
+ const p=assessment.policy||{},threshold=Number(p.novelStateThreshold)||.45,minCap=Number(p.minConfidenceCap)||60,maxPenalty=Number(p.maxConfidencePenalty)||40,scale=Math.max(0,Math.min(1,(assessment.noveltyScore-threshold)/Math.max(.01,1-threshold))),cap=Math.max(minCap,Math.round(100-maxPenalty*scale)),adjusted=Math.min(confidence,cap);
  return {applied:adjusted<confidence,confidenceCap:cap,adjustedConfidence:adjusted,adjustment:adjusted-confidence,reason:'novel_server_state',noveltyScore:assessment.noveltyScore,samples:assessment.samples,bestSimilarity:assessment.similarStates?.[0]?.similarity??null};
 }
 function graphHealth(k,asOf){
