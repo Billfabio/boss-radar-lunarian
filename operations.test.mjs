@@ -11,7 +11,7 @@ function source(id,{reliability=90,health='HEALTHY',delay=10,first=40,eventEvide
 }
 function context({coverage=100,predictions=[prediction()],candidate=null,sourceHealth='HEALTHY'}={}){
  const intelSources=[source('rubinot-official'),source('otbosstracker',{reliability:84,delay:20,first:25}),source('whatsapp-group',{reliability:78,delay:3,first:55})],invSources=intelSources.map(s=>({id:s.id,name:s.name,reliability:s.reliability,firstDetectionRate:s.id==='whatsapp-group'?55:s.id==='rubinot-official'?40:25,health:sourceHealth,latency:{averageDelayMinutes:s.averageDelayMinutes}}));
- return {world:'Lunarian',intelligence:{predictions,sources:intelSources,events:[]},investigation:{sources:invSources,cases:[]},whatsapp:{coverage:{coveragePct:coverage},health:{browserConnected:true,whatsappDetected:true},candidates:candidate?[candidate]:[]},system:{safeMode:{level:'NORMAL'}},settings:{progress:{}}};
+ return {world:'Lunarian',intelligence:{predictions,sources:intelSources,events:[]},investigation:{sources:invSources,cases:[]},whatsapp:{coverage:{coveragePct:coverage},health:{browserConnected:true,whatsappDetected:true},candidates:candidate?[candidate]:[]},system:{safeMode:{level:'NORMAL'}},settings:{progress:{Ferumbras:{favorite:false}}}};
 }
 test('Decision priority is operationally higher when the same prediction has poor detection coverage',()=>{
  const highState={},lowState={},hi=runDecisionCycle(highState,context({coverage:100}),T).bosses[0],lo=runDecisionCycle(lowState,context({coverage:25,sourceHealth:'DEGRADED'}),T).bosses[0];
