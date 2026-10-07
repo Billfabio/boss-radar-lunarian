@@ -1,6 +1,6 @@
 (()=>{
  const GROUP='Lunarian',adapter=globalThis.BossWhatsAppAdapter,core=globalThis.BossCollectorCore,VERSION=chrome.runtime.getManifest().version;
- let running=false,observer=null,observedRoot=null,debounceTimer=null,heartbeatTimer=null,compiled=null,compiledVersion='',currentStatus='DISCONNECTED',lastDiagnostics=null;
+ let running=false,observer=null,observedRoot=null,debounceTimer=null,heartbeatTimer=null,compiled=null,compiledVersion='',currentStatus='DISCONNECTED',lastDiagnostics=null,lastScanAt=0,lastObserverEventAt=0;
  const PROCESSED_TTL=24*3600000,PROCESSED_MAX=10000;
  let delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,domAdapterErrors:0,observerEvents:0};
  const send=data=>chrome.runtime.sendMessage(data),hash=async text=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(text))))].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -8,7 +8,7 @@
  async function emitHeartbeat(status=currentStatus,diagnostics=lastDiagnostics){const d=delta;delta={messagesSeen:0,messagesFiltered:0,bossMatches:0,exactMatches:0,fuzzyMatches:0,duplicates:0,errors:0,domAdapterErrors:0,observerEvents:0};try{await send({type:'heartbeat',status,diagnostics,metricsDelta:d});}catch{}}
  function scheduleHeartbeat(){clearTimeout(heartbeatTimer);heartbeatTimer=setTimeout(async()=>{await emitHeartbeat();scheduleHeartbeat();},15000);}
  function hasMessageNode(node){return node?.nodeType===1&&(node.matches?.('[data-pre-plain-text],[data-id]')||node.querySelector?.('[data-pre-plain-text]'));}
- function attachObserver(){const root=document.querySelector('#main');if(root===observedRoot&&observer)return;if(observer)observer.disconnect();observer=null;observedRoot=root;if(!root)return;observer=new MutationObserver(ms=>{if(!ms.some(m=>[...m.addedNodes].some(hasMessageNode)))return;add('observerEvents');clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>void scan(false),220);});observer.observe(root,{childList:true,subtree:true});}
+ function attachObserver(){const root=document.querySelector('#main');if(root===observedRoot&&observer)return;if(observer)observer.disconnect();observer=null;observedRoot=root;if(!root)return;observer=new MutationObserver(ms=>{if(!ms.some(m=>[...m.addedNodes].some(hasMessageNode)))return;lastObserverEventAt=Date.now();add('observerEvents');clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>void scan(false),220);});observer.observe(root,{childList:true,subtree:true});}
  function status(code,message,diagnostics){currentStatus=code;lastDiagnostics=diagnostics;return send({type:'status',statusCode:code,status:message,diagnostics}).catch(()=>{});}
  async function reporter(author,salt){return author?hash(salt+'|author|'+author):'';}
  async function groupKey(identity,salt){return hash(salt+'|group|'+identity);}
@@ -22,7 +22,7 @@
  async function baseline(nodes,cfg){
   const rows=[];for(const el of nodes){const m=adapter.extractNode(el);if(!m.text&&!m.media)continue;rows.push({...m,_key:await rawKey(m)});}rows.sort((a,b)=>(a.at||0)-(b.at||0));const last=rows.at(-1);if(last)await chrome.storage.local.set({localCheckpoint:{key:last._key,at:last.at||Date.now(),setAt:Date.now()}});return rows.length;
  }
- async function scan(manual=false){if(running)return;running=true;
+ async function scan(manual=false){if(running)return;running=true;lastScanAt=Date.now();
   try{
    const cfg=await send({type:'config'});if(cfg.paused){await status('PAUSED','Collector pausado.',null);return;}if(!cfg.dictionary?.entries?.length){await status('DEGRADED','Dicionário de bosses indisponível; coleta aguardando sincronização.',null);return;}
    if(compiledVersion!==cfg.dictionary.version){compiled=core.compileDictionary(cfg.dictionary);compiledVersion=cfg.dictionary.version;}
@@ -40,7 +40,7 @@
    for(const m of newer){add('messagesSeen');const row=await analyze(m,cfg,gKey);processedNow.push({key:m._key,at:Date.now()});if(row)evidence.push(row);}
    if(evidence.length){const r=await send({type:'evidence-batch',group:GROUP,evidence});if(r?.error)throw new Error(r.error);}
    const last=extracted.at(-1),nextProcessed=core.pruneProcessed([...processed,...processedNow],Date.now(),PROCESSED_TTL,PROCESSED_MAX);if(last)await chrome.storage.local.set({localCheckpoint:{key:last._key,at:last.at||Date.now(),setAt:Date.now()},processedMessageKeys:nextProcessed});else if(processedNow.length)await chrome.storage.local.set({processedMessageKeys:nextProcessed});
-   const diagnostics={configured:GROUP,detected,domOk:true,visible:extracted.length,relevant:evidence.length,gapDetected:!!gap,gapFrom:gap?Number(localCheckpoint.at)||null:null,gapTo:gap?Number(oldest?.at)||Date.now():null,fallbackUsed,manual:!!manual};
+   const diagnostics={configured:GROUP,detected,domOk:true,visible:extracted.length,relevant:evidence.length,gapDetected:!!gap,gapFrom:gap?Number(localCheckpoint.at)||null:null,gapTo:gap?Number(oldest?.at)||Date.now():null,fallbackUsed,manual:!!manual,observerAttached:!!observer&&observedRoot===document.querySelector('#main'),lastScanAt,lastObserverEventAt:lastObserverEventAt||null};
    await status(gap?'DEGRADED':'CONNECTED',gap?'Lacuna de coleta detectada; mensagens atuais continuam sendo capturadas.':'Lunarian Collector ativo.',diagnostics);
   }catch(e){add('errors');await status('ERROR',String(e.message||e).slice(0,240),lastDiagnostics);}finally{running=false;}
  }
