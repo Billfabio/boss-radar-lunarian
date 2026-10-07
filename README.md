@@ -8,6 +8,8 @@
 
 > Inteligência Investigativa do Lunarian: [RELATORIO-INVESTIGATION-ENGINE.md](RELATORIO-INVESTIGATION-ENGINE.md).
 
+> Confiabilidade operacional 24x7: [RELATORIO-SYSTEM-RELIABILITY-24X7.md](RELATORIO-SYSTEM-RELIABILITY-24X7.md).
+
 > Auditoria técnica: consulte [AUDITORIA-TECNICA.md](AUDITORIA-TECNICA.md).\n> Evolução da camada de confiança: consulte [RELATORIO-CONFIABILIDADE-V4.md](RELATORIO-CONFIABILIDADE-V4.md).
 
 Plataforma de monitoramento, histórico e previsão de bosses do RubinOT.
