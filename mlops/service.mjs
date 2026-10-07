@@ -4,6 +4,7 @@ import {selfCritique,errorAnalysis,discoverPatterns,featureImportance,sourceRela
 import {predictAdaptive} from '../prediction/adaptive-engine.mjs';
 import {calibrateConfidence} from '../learning/calibration.mjs';
 import {appendLedger} from '../event-sourcing/ledger.mjs';
+import {recordLabShadowPredictions} from './lab.mjs';
 
 export function ensureMLOps(intel){
  intel.mlops ||= {schema:1,datasets:{},registry:{},runs:[],errors:{},timeline:[],updates:{},rollouts:{},backtests:[]};
@@ -22,9 +23,10 @@ export function recordPrediction(intel,forecast,asOf,activeModels=intel.models){
  artifact.immutableHash=digest({output:artifact.output,features:artifact.features,weights:artifact.weights,rawPrediction:artifact.rawPrediction,datasetId:artifact.datasetId,asOf});s.runs.push(artifact);
  for(const id of Object.keys(MODEL_SPECS).filter(x=>x!=='adaptive_ensemble')){
  const start=performance.now(),prediction=candidatePrediction(id,features);if(!prediction)continue;
- const historical=s.runs.filter(x=>x.modelId===id&&x.modelVersion===MODEL_SPECS[id].version&&x.world===forecast.world&&x.resolvedAt&&Math.max(x.resolvedAt,x.outcomeUpdatedAt||0)<asOf).map(x=>({...x,confidenceRaw:x.confidenceRaw,confidence:x.confidence})),cal=calibrateConfidence(forecast.confidenceRaw??forecast.confidence,historical,forecast.world,forecast.boss);
- const shadow={identity,forecastId:forecast.id,pairId:forecast.id,boss:forecast.boss,world:forecast.world,datasetId:ds.id,asOf,modelId:id,modelVersion:MODEL_SPECS[id].version,mode:'Shadow',...prediction,confidenceRaw:forecast.confidenceRaw??forecast.confidence,confidence:cal.samples>=20?cal.calibrated:null,calibrationSamples:cal.samples,latencyMs:performance.now()-start};s.runs.push(shadow);
+ const historical=s.runs.filter(x=>!x.experimentId&&x.modelId===id&&x.modelVersion===MODEL_SPECS[id].version&&x.world===forecast.world&&x.resolvedAt&&Math.max(x.resolvedAt,x.outcomeUpdatedAt||0)<asOf).map(x=>({...x,confidenceRaw:x.confidenceRaw,confidence:x.confidence})),cal=calibrateConfidence(forecast.confidenceRaw??forecast.confidence,historical,forecast.world,forecast.boss);
+ const shadow={identity:identity+'|'+id,forecastId:forecast.id,pairId:forecast.id,boss:forecast.boss,world:forecast.world,datasetId:ds.id,asOf,modelId:id,modelVersion:MODEL_SPECS[id].version,mode:'Shadow',...prediction,confidenceRaw:forecast.confidenceRaw??forecast.confidence,confidence:cal.samples>=20?cal.calibrated:null,calibrationSamples:cal.samples,latencyMs:performance.now()-start};s.runs.push(shadow);
  }
+ recordLabShadowPredictions(intel,forecast,asOf,features,ds.id);
  note(s,'prediction_recorded',{forecastId:forecast.id,datasetId:ds.id,boss:forecast.boss,world:forecast.world},asOf);
  return {datasetId:ds.id,features:features.values,critique};
 }
