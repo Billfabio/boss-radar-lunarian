@@ -24,7 +24,7 @@ async function flushQueue(){
 }
 async function heartbeat(extra={}){
  const {config,paused,collectorMetrics={},evidenceQueue=[]}=await chrome.storage.local.get(['config','paused','collectorMetrics','evidenceQueue']);if(!config)return;
- const status=paused?'PAUSED':extra.status||'CONNECTED';const heartbeatAt=Date.now();await chrome.storage.local.set({lastHeartbeatLocalAt:heartbeatAt});try{await request('/extension/heartbeat',{group:GROUP,status,extensionVersion:VERSION,queueSize:evidenceQueue.length,metrics:collectorMetrics,diagnostics:extra.diagnostics||null},config.key,config.serviceURL);if(!paused&&status==='CONNECTED')await setStatus('CONNECTED','Lunarian Collector ativo.');}catch(e){await addMetrics({errors:1,requests:1});await setStatus('BACKEND_OFFLINE','Boss Radar offline; fila local preservada.');}
+ const status=paused?'PAUSED':extra.status||'CONNECTED';const heartbeatAt=Date.now();await chrome.storage.local.set({lastHeartbeatLocalAt:heartbeatAt});try{await request('/extension/heartbeat',{group:GROUP,status,extensionVersion:VERSION,queueSize:evidenceQueue.length,metrics:collectorMetrics,diagnostics:extra.diagnostics||null,clientNow:heartbeatAt},config.key,config.serviceURL);if(!paused&&status==='CONNECTED')await setStatus('CONNECTED','Lunarian Collector ativo.');}catch(e){await addMetrics({errors:1,requests:1});await setStatus('BACKEND_OFFLINE','Boss Radar offline; fila local preservada.');}
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  const local=!sender.tab&&sender.url?.startsWith(chrome.runtime.getURL('')),web=sender.tab?.url?.startsWith('https://web.whatsapp.com/');
