@@ -92,10 +92,21 @@ export function failExperiment(intel,id,error,at=Date.now()){
  const l=ensureAILab(intel),exp=l.experiments[id];if(!exp)throw new Error('Experimento não encontrado');exp.status='FAILED';exp.failedAt=at;exp.error=String(error?.message||error).slice(0,500);exp.history.push({at,status:'FAILED',reason:exp.error});return exp;
 }
 function livePairs(intel,exp,at){
- const s=mlops(intel),candidate=s.runs.filter(x=>x.modelId===exp.modelId&&x.world===exp.world&&(!exp.boss||x.boss===exp.boss)&&x.resolvedAt&&x.resolvedAt<=at&&x.asOf>=exp.shadowStartedAt&&Number.isFinite(x.errorMinutes));
+ const s=mlops(intel),specific=s.runs.filter(x=>x.experimentId===exp.id),candidate=(specific.length?specific:s.runs.filter(x=>!x.experimentId&&x.modelId===exp.modelId)).filter(x=>x.modelId===exp.modelId&&x.world===exp.world&&(!exp.boss||x.boss===exp.boss)&&x.resolvedAt&&x.resolvedAt<=at&&x.asOf>=exp.shadowStartedAt&&Number.isFinite(x.errorMinutes));
  const latest=new Map();for(const x of candidate.sort((a,b)=>a.asOf-b.asOf))latest.set(x.pairId,x);
  const champion=new Map(s.runs.filter(x=>x.mode==='Champion'&&x.world===exp.world&&x.resolvedAt&&x.resolvedAt<=at).map(x=>[x.pairId,x]));
  return [...latest.values()].filter(x=>champion.has(x.pairId)).map(x=>{const b=champion.get(x.pairId);return {pairId:x.pairId,boss:x.boss,world:x.world,asOf:x.asOf,resolvedAt:x.resolvedAt,datasetId:x.datasetId,championErrorMinutes:b.errorMinutes,challengerErrorMinutes:x.errorMinutes,championWindowHit:!!b.windowHit,challengerWindowHit:!!x.windowHit,championConfidence:b.confidence??null,challengerConfidence:x.confidence??null,challengerLatencyMs:x.latencyMs??null,improvementMinutes:b.errorMinutes-x.errorMinutes};});
+}
+export function recordLabShadowPredictions(intel,forecast,asOf,features,datasetId){
+ const l=ensureAILab(intel),s=mlops(intel),created=[];
+ for(const exp of Object.values(l.experiments)){
+  if(!['SHADOW','CHALLENGER','ELIGIBLE_FOR_PROMOTION'].includes(exp.status)||exp.world!==forecast.world||(exp.boss&&exp.boss!==forecast.boss)||!exp.shadowStartedAt||asOf<exp.shadowStartedAt)continue;
+  const identity=forecast.id+'|'+datasetId+'|'+exp.id;if(s.runs.some(x=>x.identity===identity))continue;
+  const start=performance.now(),prediction=candidatePrediction(exp.modelId,features,exp.parameters||{});if(!prediction)continue;
+  const historical=s.runs.filter(x=>x.experimentId===exp.id&&x.world===forecast.world&&x.boss===forecast.boss&&x.resolvedAt&&x.resolvedAt<asOf),raw=forecast.confidenceRaw??forecast.confidence,cal=calibrateConfidence(raw,historical,forecast.world,forecast.boss);
+  const run={identity,experimentId:exp.id,forecastId:forecast.id,pairId:forecast.id,boss:forecast.boss,world:forecast.world,datasetId,asOf,modelId:exp.modelId,modelVersion:exp.modelVersion,mode:'ExperimentShadow',...prediction,confidenceRaw:raw,confidence:cal.samples>=20?cal.calibrated:null,calibrationSamples:cal.samples,latencyMs:performance.now()-start,parameters:structuredClone(exp.parameters||{})};s.runs.push(run);created.push(run);
+ }
+ return created;
 }
 export function refreshLiveExperiment(intel,id,at=Date.now()){
  const l=ensureAILab(intel),s=mlops(intel),exp=l.experiments[id];if(!exp)throw new Error('Experimento não encontrado');if(!['SHADOW','CHALLENGER','ELIGIBLE_FOR_PROMOTION'].includes(exp.status))return exp;
@@ -124,8 +135,8 @@ function chooseCanary(l,world,boss,key){
 }
 export function applyLabModel(intel,basePrediction,boss,world,key,asOf=Date.now()){
  const l=ensureAILab(intel),selection=chooseCanary(l,world,boss,key);if(!selection.selected||selection.modelId==='adaptive_ensemble'||basePrediction.status!=='ready')return {prediction:basePrediction,rollout:selection.rollout,baseline:null};
- const f=buildFeatures(intel.events,boss,world,asOf),c=candidatePrediction(selection.modelId,f);if(!c)return {prediction:basePrediction,rollout:{...selection.rollout,selected:false,reason:'candidate_insufficient_features'},baseline:null};
- const historical=mlops(intel).runs.filter(x=>x.modelId===selection.modelId&&x.world===world&&x.boss===boss&&x.resolvedAt&&x.resolvedAt<asOf),raw=basePrediction.confidenceRaw??basePrediction.confidence,cal=calibrateConfidence(raw,historical,world,boss),last=f.rows.at(-1)?.estimatedAt,lower=last==null?null:(c.windowStart-last)/3600000,upper=last==null?null:(c.windowEnd-last)/3600000,hits=lower==null?0:f.intervals.filter(x=>x>=lower&&x<=upper).length,probability=f.intervals.length?round(100*(hits+1)/(f.intervals.length+2),1):null;
+ const f=buildFeatures(intel.events,boss,world,asOf),experiment=selection.rollout?.experimentId?l.experiments[selection.rollout.experimentId]:null,c=candidatePrediction(selection.modelId,f,experiment?.parameters||{});if(!c)return {prediction:basePrediction,rollout:{...selection.rollout,selected:false,reason:'candidate_insufficient_features'},baseline:null};
+ const historical=mlops(intel).runs.filter(x=>x.modelId===selection.modelId&&(!experiment||x.experimentId===experiment.id)&&x.world===world&&x.boss===boss&&x.resolvedAt&&x.resolvedAt<asOf),raw=basePrediction.confidenceRaw??basePrediction.confidence,cal=calibrateConfidence(raw,historical,world,boss),last=f.rows.at(-1)?.estimatedAt,lower=last==null?null:(c.windowStart-last)/3600000,upper=last==null?null:(c.windowEnd-last)/3600000,hits=lower==null?0:f.intervals.filter(x=>x>=lower&&x<=upper).length,probability=f.intervals.length?round(100*(hits+1)/(f.intervals.length+2),1):null;
  if(cal.samples<20)return {prediction:basePrediction,rollout:{...selection.rollout,selected:false,reason:'candidate_calibration_insufficient',calibrationSamples:cal.samples},baseline:null};
  const baseline=structuredClone(basePrediction);
  const spec=MODEL_SPECS[selection.modelId],prediction={...basePrediction,predictedCenterAt:c.predictedAt,likelyAt:basePrediction.likelyAt?c.predictedAt:null,windowStart:c.windowStart,windowEnd:c.windowEnd,uncertaintyMs:Math.round((c.windowEnd-c.windowStart)/2),confidenceRaw:raw,confidence:cal.calibrated,calibration:cal,probability,probabilityDistribution:[],bestProbabilitySlot:null,labModelId:selection.modelId,labModelVersion:selection.modelVersion,methods:[{name:selection.modelId,label:spec.name,predictedAt:c.predictedAt,weight:1,normalizedWeight:1,samples:c.parameters?.intervals||f.values.samples}],explain:[...(basePrediction.explain||[]),'AI Lab Canary: '+spec.name+' '+selection.modelVersion+' foi selecionado deterministicamente para esta previsão após aprovação manual. Confiança calibrada somente com resultados Shadow do próprio Challenger.']};
@@ -154,7 +165,7 @@ function bhAdjusted(experiments){
  for(let i=m-1;i>=0;i--){const q=Math.min(prev,rows[i].p*m/(i+1));rows[i].q=round(q,6);prev=q;}return Object.fromEntries(rows.map(x=>[x.id,x.q]));
 }
 function leaderboardRows(intel,world){
- const s=mlops(intel),latest=new Map();for(const r of s.runs.filter(x=>x.world===world&&x.resolvedAt&&Number.isFinite(x.errorMinutes)).sort((a,b)=>a.asOf-b.asOf))latest.set(r.modelId+'|'+r.pairId,r);
+ const s=mlops(intel),latest=new Map();for(const r of s.runs.filter(x=>!x.experimentId&&x.world===world&&x.resolvedAt&&Number.isFinite(x.errorMinutes)).sort((a,b)=>a.asOf-b.asOf))latest.set(r.modelId+'|'+r.pairId,r);
  const rows=[...latest.values()],overall=Object.keys(MODEL_SPECS).map(id=>({modelId:id,name:MODEL_SPECS[id].name,version:MODEL_SPECS[id].version,...metrics(rows.filter(x=>x.modelId===id))})).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));
  const bosses=[...new Set(rows.map(x=>x.boss))],perBoss=bosses.map(boss=>{const models=Object.keys(MODEL_SPECS).map(id=>({modelId:id,...metrics(rows.filter(x=>x.boss===boss&&x.modelId===id))})).filter(x=>x.samples).sort((a,b)=>(a.maeMinutes??Infinity)-(b.maeMinutes??Infinity));return {boss,best:models[0]||null,models};}).sort((a,b)=>(b.best?.samples||0)-(a.best?.samples||0));
  return {overall,perBoss};
