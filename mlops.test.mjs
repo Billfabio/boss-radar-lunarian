@@ -29,7 +29,7 @@ test('Poisoning detector ignores day-only repetition and flags precise source bu
 test('Feature importance is measured only after enough temporal folds',()=>{assert.equal(featureImportance(rows(20),'Boss','World',T+3000*H).status,'insufficient');const r=featureImportance(rows(60),'Boss','World',T+6000*H);assert.equal(r.status,'no_positive_gain');assert.equal(r.productionEligible,false);assert.ok(r.features.every(x=>x.importance==null));});
 test('Canary selection is deterministic and regression rolls back',()=>{const s=intel();ensureMLOps(s);s.mlops.rollouts['World|boss']={id:'u',status:'canary',models:{candidate:true},percentage:5,stage:0,stageStartedAt:1,gate:{champion:{maeMinutes:10,windowAccuracy:1}}};assert.deepEqual(modelsForPrediction(s,'Boss','World','same'),modelsForPrediction(s,'Boss','World','same'));s.forecasts=Array.from({length:20},(_,i)=>({boss:'Boss',world:'World',createdAt:2,resolvedAt:3,errorMinutes:20,windowHit:false,rollout:{id:'u',selected:true}}));assert.equal(monitorCanary(s,'Boss','World',4).status,'rolled_back');assert.equal(modelsForPrediction(s,'Boss','World','same').models,s.models);});
 test('Queue retries only declared idempotent jobs and preserves dead letters while processing recovers',async()=>{const letters=[],q=new TaskQueue({deadLetters:letters});assert.throws(()=>q.enqueue('unsafe',async()=>{}, {maxAttempts:2}),/idempotente/);let attempts=0;await assert.rejects(q.enqueue('bad',async()=>{attempts++;throw new Error('failure');},{idempotent:true,maxAttempts:3,payload:{eventId:'e'}}));assert.equal(attempts,3);assert.equal(letters[0].attempts,3);assert.equal(letters[0].payload.eventId,'e');assert.equal(await q.enqueue('good',async()=>42),42);assert.equal(q.stats().deadLetterCount,1);});
-test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,3);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
+test('Registry and dashboard preserve Champion and show unavailable metrics honestly',()=>{const s=intel(0),d=dashboard(s,'World',T);assert.equal(d.champion.status,'Champion');assert.equal(d.shadowModels.length,4);assert.equal(d.report.precision.maeMinutes,null);assert.equal(evaluateModel(s,'robust_interval','World',T).passed,false);assert.equal(s.mlops.registry.robust_interval.status,'Shadow');});
 
 
 function labBacktest(n=120){
@@ -71,7 +71,7 @@ test('AI Lab Canary auto-rolls back on severe real-world regression',()=>{
  const result=monitorLabCanary(s,'Boss','World',1004);assert.equal(result.status,'ROLLED_BACK');assert.equal(exp.status,'REJECTED');
 });
 test('AI Lab dashboard exposes sample-aware leaderboard and model card without fictitious metrics',()=>{
- const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.2.0');
+ const s=intel(0);ensureMLOps(s);const d=aiLabDashboard(s,'World',T);assert.equal(d.policy.auto_model_promotion,false);assert.equal(d.champion.modelId,'adaptive_ensemble');assert.equal(d.champion.metrics.samples,0);assert.ok(Array.isArray(d.leaderboard.overall));assert.equal(d.featureVersion,'1.3.0');
 });
 
 
@@ -93,9 +93,9 @@ test('AI Lab robustness probe is deterministic and explicitly not an accuracy cl
 });
 
 
-test('AI Lab Feature Store v1.2 exposes source coverage only when historically supplied and derives non-causal regime signal',()=>{
+test('AI Lab Feature Store v1.3 exposes source coverage only when historically supplied and derives non-causal regime signal',()=>{
  const es=rows(30),asOf=availableAt(es.at(-1))+1,a=buildFeatures(es,'Boss','World',asOf),b=buildFeatures(es,'Boss','World',asOf,{sourceCoverage:.73});
- assert.equal(a.version,'1.2.0');assert.equal(a.values.sourceCoverage,null);assert.equal(b.values.sourceCoverage,.73);assert.ok(['STABLE','TRANSITION','HIGH_DRIFT'].includes(b.values.regimeSignal));
+ assert.equal(a.version,'1.3.0');assert.equal(a.values.sourceCoverage,null);assert.equal(b.values.sourceCoverage,.73);assert.ok(['STABLE','TRANSITION','HIGH_DRIFT'].includes(b.values.regimeSignal));
 });
 
 test('AI Lab robustness includes missing-source and conflict scenarios without claiming accuracy',()=>{
@@ -119,4 +119,13 @@ test('A promoted graph model falls back to the base Champion when its relationsh
  s.discovery={temporalKnowledge:{featureRegistry:{f:{id:'f',status:'TESTING'}},relationshipRegistry:{r:{id:'r',status:'DEGRADED'}}}};
  const base=predictAdaptive(s.events,'Boss','World',{},T+3000*H),result=applyLabModel(s,base,'Boss','World','key',T+3000*H);
  assert.equal(result.prediction,base);assert.equal(result.rollout.selected,false);assert.equal(result.rollout.reason,'graph_feature_not_active_or_relationship_degraded');
+});
+
+
+test('Analog Forecasting uses only historically resolved states and abstains with insufficient neighbors',()=>{
+ const es=rows(30),asOf=availableAt(es.at(-1))+1,f=buildFeatures(es,'Boss','World',asOf);
+ assert.equal(f.version,'1.3.0');assert.ok(f.values.analogStateSamples>=20);assert.ok(f.values.analogBestSimilarity>.9);assert.ok(f.analogExamples.every(x=>x.maxContextAvailableAt<=x.evaluatedAt&&x.outcomeAvailableAt<=asOf&&x.outcomeAt>x.evaluatedAt));
+ const p=candidatePrediction('analog_state_interval',f,{neighbors:12,minSimilarity:.45});assert.ok(p);assert.ok(Math.abs((p.predictedAt-es.at(-1).estimatedAt)/H-72)<1);
+ const sparse=buildFeatures(rows(6),'Boss','World',availableAt(rows(6).at(-1))+1);assert.equal(candidatePrediction('analog_state_interval',sparse,{neighbors:12,minSimilarity:.45}),null);
+ const store={},ds=datasetSnapshot(store,f,{experiment:'analog_state_interval'});assert.equal(ds.analogExamples.length,f.analogExamples.length);assert.equal(verifyDataset(ds),true);
 });
