@@ -5,6 +5,8 @@ import {createWatchdog} from './runtime/watchdog.mjs';
 import {enqueueOutbox,processOutbox,outboxStats,requeueDeadLetter,discardDeadLetter} from './runtime/outbox.mjs';
 import {auditIntegrity,safeRepair} from './runtime/integrity.mjs';
 import {createBackupManager} from './runtime/backup.mjs';
+import {validateStartupState,validatePendingOutboxHandlers,recordStartupRecovery} from './runtime/startup.mjs';
+import {replayCorrelation} from './runtime/replay.mjs';
 
 test('component health never reports stale heartbeat as healthy',()=>{
  const state={};ensureOperational(state);heartbeat(state,'collector',{status:'HEALTHY',critical:true,expectedIntervalMs:1000,staleAfterMs:3000},1000);
@@ -75,4 +77,34 @@ test('rotating backup is accepted only after a successful read/hash/parse restor
  const files=new Map(),state={settings:{world:'Lunarian'},checks:[],intelligence:{events:[]},whatsapp:{candidates:[]}},writeFile=async(p,v)=>files.set(p,String(v)),readFile=async(p)=>{if(!files.has(p)){const e=new Error('missing');e.code='ENOENT';throw e;}return files.get(p);},rename=async(a,b)=>{files.set(b,files.get(a));files.delete(a);},mkdir=async()=>{};
  const b=createBackupManager({state,readFile,writeFile,rename,mkdir,dataDir:'/data'}),meta=await b.backup(6*3600000),restore=await b.restoreTest(meta.slot,6*3600000+1);assert.equal(restore.ok,true);
  files.set(meta.path,'corrupt');await assert.rejects(()=>b.restoreTest(meta.slot,6*3600000+2),/hash divergente/);
+});
+
+
+test('startup validation fails fast on corrupted operational event store',()=>{
+ const state={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[]};appendOperationalEvent(state,'BOOT',{ok:true},{at:1000});state.operational.events[0].payload.ok=false;
+ const result=validateStartupState(state,{worlds:['Lunarian']});assert.equal(result.ok,false);assert.ok(result.issues.some(x=>x.code==='OPERATIONAL_EVENT_STORE_BROKEN'));
+});
+
+test('persistent outbox survives JSON restart and replays logically once',async()=>{
+ const original={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[]};enqueueOutbox(original,'job',{id:7},{idempotencyKey:'restart-job',correlationId:'trace-restart',maxAttempts:3});const restarted=JSON.parse(JSON.stringify(original)),calls=[];
+ const handlers={job:async payload=>{calls.push(payload.id);return {ok:true};}};const handlerCheck=validatePendingOutboxHandlers(restarted,handlers);assert.equal(handlerCheck.ok,true);const before=outboxStats(restarted).pending;
+ await processOutbox(restarted,handlers,{persist:async()=>{},deadLetters:restarted.pipelineDeadLetters});const after=outboxStats(restarted).pending;recordStartupRecovery(restarted,{outboxBefore:before,outboxAfter:after,dlqBefore:0,dlqAfter:0});
+ assert.deepEqual(calls,[7]);assert.equal(after,0);assert.equal(restarted.operational.startupRecovery.replayed,1);
+ const duplicate=enqueueOutbox(restarted,'job',{id:7},{idempotencyKey:'restart-job'});assert.equal(duplicate.duplicate,true);
+});
+
+test('startup detects pending outbox kind without handler instead of silently losing it',()=>{
+ const state={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[]};enqueueOutbox(state,'unknown_job',{id:1},{idempotencyKey:'unknown-1'});
+ const result=validatePendingOutboxHandlers(state,{});assert.equal(result.ok,false);assert.deepEqual(result.missingHandlers,['unknown_job']);assert.equal(outboxStats(state).pending,1);
+});
+
+test('correlation replay reconstructs candidate pipeline and reports pending work',()=>{
+ const state={settings:{world:'Lunarian'},intelligence:{ledger:[]},pipelineDeadLetters:[],whatsapp:{communityEvidence:[{id:'e1',correlationId:'trace-r'}],candidates:[{id:'c1',correlationId:'trace-r',status:'PENDING',boss:'Ferumbras',world:'Lunarian'}]},groupChecks:[]};
+ appendOperationalEvent(state,'EVIDENCE_CREATED',{evidenceId:'e1',candidateId:'c1'},{at:1000,correlationId:'trace-r'});appendOperationalEvent(state,'CANDIDATE_CREATED',{candidateId:'c1'},{at:1001,correlationId:'trace-r'});appendOperationalEvent(state,'CANDIDATE_INVESTIGATION_QUEUED',{candidateId:'c1'},{at:1002,correlationId:'trace-r'});enqueueOutbox(state,'investigation_start',{candidate:{id:'c1'}},{idempotencyKey:'i1',correlationId:'trace-r'});
+ const replay=replayCorrelation(state,'trace-r');assert.equal(replay.status,'REPLAYED');assert.equal(replay.state.candidate.id,'c1');assert.equal(replay.pending.length,1);assert.equal(replay.violations.length,0);
+});
+
+test('integrity reconciliation detects orphan CommunityEvidence and orphan WhatsApp confirmation',()=>{
+ const state={whatsapp:{communityEvidence:[{id:'e-orphan'}],candidates:[]},groupChecks:[{id:'check-1',origin:'whatsapp-confirmed',candidateId:'missing'}],intelligence:{events:[],forecasts:[],ledger:[],mlops:{datasets:{}}}};
+ const result=auditIntegrity(state,2000);assert.ok(result.issues.some(x=>x.code==='ORPHAN_COMMUNITY_EVIDENCE'));assert.ok(result.issues.some(x=>x.code==='WHATSAPP_CHECK_ORPHAN_CANDIDATE'));
 });
