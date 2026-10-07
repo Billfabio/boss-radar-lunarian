@@ -19,6 +19,7 @@ import { buildHealth } from './runtime/health.mjs';
 import { createStructuredLogger } from './observability/logger.mjs';
 import { issueSession,validSession,validPassword,loginHtml } from './security/session.mjs';
 import { RateLimiter } from './security/rate-limit.mjs';
+import { createInvestigationEngine } from './investigation/engine.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4317);
@@ -77,6 +78,7 @@ async function refreshCharacter(input=CHARACTER_NAME,force=false){
 }
 function broadcast(type, data) { for (const res of clients) res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); }
 const intelligence=createIntelligence({state,persist,broadcast});
+let investigation=null;
 const structured=createStructuredLogger({state,persist});
 await intelligence.bootstrapChecks([...state.checks,...state.groupChecks]);
 async function refresh(force=false) {
@@ -129,7 +131,7 @@ async function refresh(force=false) {
       state.officialHistory[capturedWorld]=history.slice(-10800);
       await persist();
     }catch(e){intelligence.sourceAttempt('rubinot-official',{ok:false,error:e.message});result.officialError=`Estatísticas oficiais indisponíveis: ${e.message}`;}
-    cache.set(capturedWorld,result);lastCollectionAt=Date.now();lastError=publicError;performanceStats.lastRefreshMs=Math.round((performance.now()-refreshStarted)*10)/10;await persist();broadcast('update',{world:capturedWorld});return result;
+    cache.set(capturedWorld,result);lastCollectionAt=Date.now();lastError=publicError;performanceStats.lastRefreshMs=Math.round((performance.now()-refreshStarted)*10)/10;await persist();if(investigation)await investigation.reconcileConfirmed(intelligence.snapshot(capturedWorld));broadcast('update',{world:capturedWorld});return result;
   })();
   try { return await refreshPromise; } catch(e) { lastError=e.message;await persist().catch(()=>{});throw e; } finally { refreshPromise=null; }
 }
@@ -138,7 +140,7 @@ async function poll() {
   if (monitoring) return;
   monitoring=true;
   try {
-    const data=await refresh(); lastPoll=Date.now();await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world));
+    const data=await refresh(); lastPoll=Date.now();await heavyQueue.enqueue('discovery-tick:'+data.world,()=>intelligence.discoveryTick(data.world));if(investigation)await investigation.tick();
     if(intelligence.discoveryDue(data.world)){try{await heavyQueue.enqueue('discovery:'+data.world,()=>intelligence.discoveryWrite('run',{world:data.world}));}catch(e){log({world:data.world,kind:'signal-discovery',result:e.message});}}
     if (state.settings.world !== data.world || !state.settings.enabled || lastError) return;
     const now=Date.now();
@@ -197,7 +199,8 @@ async function notifyCommunityCandidate(candidate){
   for(const sub of [...state.subscriptions]){try{const response=await sendPush(sub,message,vapid);if(response.status===404||response.status===410){state.subscriptions=state.subscriptions.filter(s=>s.endpoint!==sub.endpoint);continue;}if(!response.ok)throw new Error('HTTP '+response.status);}catch(e){log({boss:candidate.boss,world:candidate.world,kind:'community-candidate',result:e.message});}}
   await persist();
 }
-const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),onCandidate:notifyCommunityCandidate,investigate:async candidate=>{try{await refresh(true);}catch{}const snap=intelligence.snapshot(candidate.world),near=(snap.events||[]).filter(e=>e.boss===candidate.boss&&Number.isFinite(e.estimatedAt)&&Math.abs(e.estimatedAt-candidate.estimatedAt)<=2*3600000);return {compatibleEvents:near.length,independentSources:near.reduce((m,e)=>Math.max(m,Number(e.sourceCount)||0),0),checkedAt:Date.now()};},saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
+investigation=createInvestigationEngine({state,persist,broadcast,getSnapshot:world=>intelligence.snapshot(world),refreshSources:async()=>{await refresh(true);}});
+const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),onCandidate:notifyCommunityCandidate,investigate:candidate=>investigation.investigate(candidate,{forceSources:true}),onDecision:(candidate,decision)=>investigation.recordDecision(candidate,decision),saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
@@ -221,7 +224,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='POST') {
       if(req.headers.origin!==ORIGIN || req.headers['x-boss-token']!==sessionToken) return json(res,403,{error:'Acesso não autorizado. Atualize a página.'});
       const input=await body(req);
-      if(url.pathname.startsWith('/api/whatsapp/')){const result=await whatsapp.control(url.pathname,input);if(!result)return json(res,404,{error:'Ação inválida'});broadcast('update',{});return json(res,200,result);}
+      if(url.pathname.startsWith('/api/whatsapp/')){const result=await whatsapp.control(url.pathname,input);if(!result)return json(res,404,{error:'Ação inválida'});broadcast('update',{});return json(res,200,result);}if(url.pathname==='/api/investigation/wait')return json(res,200,await investigation.wait(String(input.id||'')));if(url.pathname==='/api/investigation/backtest')return json(res,200,investigation.backtest());
       if(url.pathname==='/api/settings') { state.settings=validSettings(input); await persist(); json(res,200,state.settings); void poll(); return; }
       if(url.pathname==='/api/subscribe') {
         if(!allowedEndpoint(input.endpoint)||typeof input.keys?.p256dh!=='string'||typeof input.keys?.auth!=='string') throw new Error('Este navegador não forneceu uma inscrição de notificações suportada. Abra http://127.0.0.1:4317/ no Chrome, Edge ou Firefox e tente novamente.');
@@ -285,6 +288,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/group-image'){const id=url.searchParams.get('id');if(!/^[a-f0-9]{64}$/.test(id||''))throw new Error('Imagem inválida');const image=state.whatsapp.images.find(i=>i.id===id);if(!image)return json(res,404,{error:'Imagem não encontrada'});const bytes=await readFile(join(DATA,'group-images',id));res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(bytes);return;}
     if(url.pathname==='/api/group-checks')return json(res,200,{records:state.groupChecks});
     if(url.pathname==='/api/health'){const h=intelligence.healthState(state.settings.world),w=whatsapp.publicState(),q=heavyQueue.stats();return json(res,200,{...buildHealth({lastPoll,lastCollectionAt,lastPredictionAt:h.lastPredictionAt,queue:q,sources:h.sources,whatsapp:w,clients:clients.size,storageMode:'legacy-file',storage:storageHealth,errors24h:structured.errorsSince(86400000).length}),performance:{...performanceStats}});}
+    if(url.pathname==='/api/investigation')return json(res,200,investigation.publicState(state.settings.world));
     if(url.pathname==='/api/intelligence/mlops')return json(res,200,intelligence.mlops(state.settings.world));
     if(url.pathname==='/api/intelligence/discovery')return json(res,200,await heavyQueue.enqueue('discovery-dashboard:'+state.settings.world,()=>intelligence.discovery(state.settings.world)));
     if(url.pathname==='/api/logs')return json(res,200,{records:structured.recent(300)});
@@ -292,7 +296,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/character'){const name=validateCharacterName(url.searchParams.get('name')||CHARACTER_NAME);try{await refreshCharacter(name);}catch{}return json(res,200,{character:characterCache.get(name.toLowerCase())||null,error:characterErrors.get(name.toLowerCase())||null});}
     if(url.pathname==='/api/state') {
       const stateStarted=performance.now();let data=cache.get(state.settings.world); try {data=await refresh();} catch {}
-      const intelligent=intelligence.snapshot(state.settings.world),payload={settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS};
+      const intelligent=intelligence.snapshot(state.settings.world),payload={settings:state.settings,bosstiary,whatsapp:whatsapp.publicState(),investigation:investigation.publicState(state.settings.world),data:data||null,error:lastError,lastPoll,subscriptions:state.subscriptions.length,log:state.log,checks:state.checks,groupChecks:state.groupChecks.filter(c=>c.world===state.settings.world).slice(0,500),groupPatterns:groupPatterns(state.groupChecks,state.settings.world),intelligence:intelligent,publicKey:vapid.publicKey,token:sessionToken,worlds:WORLDS};
       performanceStats.lastStateMs=Math.round((performance.now()-stateStarted)*10)/10;return json(res,200,payload);
     }
     if(url.pathname==='/api/events') {
