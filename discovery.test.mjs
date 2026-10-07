@@ -93,3 +93,12 @@ test('Graph Contribution reports paired MAE only for promoted graph holdouts wit
  assert.equal(d.graphContribution.promotedGraphExperiments,2);assert.equal(d.graphContribution.pairedSamples,40);assert.equal(d.graphContribution.championWithoutGraphMaeMinutes,20);assert.equal(d.graphContribution.graphCandidateMaeMinutes,15);assert.equal(d.graphContribution.validatedMaeGainMinutes,5);assert.equal(d.graphContribution.experiments.length,1);
 });
 
+test('Before-Spawn contrastive signals enter Feature Store only as governed hypotheses',()=>{
+ const s=intelligence(),asOf=T+46*48*H,events=[];
+ for(let i=0;i<45;i++){const b=T+i*48*H+8*H,a=b-4*H;events.push({id:'pre-a'+i,boss:'A',world:'World',status:'CONFIRMADO',spawn:{lower:a,upper:a,estimate:a},availableAt:a+1000,evidence:[]});events.push({id:'pre-b'+i,boss:'B',world:'World',status:'CONFIRMADO',spawn:{lower:b,upper:b,estimate:b},availableAt:b+1000,evidence:[]});}
+ events.sort((a,b)=>a.spawn.estimate-b.spawn.estimate);s.discovery.versions=events.map(e=>({at:e.availableAt,event:e,hash:'h'+e.id}));s.discovery.coverage=[{boss:'A',world:'World',startAt:T,endAt:asOf,knownAt:T,verified:true,continuous:true},{boss:'B',world:'World',startAt:T,endAt:asOf,knownAt:T,verified:true,continuous:true}];
+ ensureTemporalKnowledge(s.discovery,T);const run=refreshTemporalKnowledge(s,'World',asOf),d=temporalKnowledgeDashboard(s,'World',asOf),feature=d.features.find(x=>x.kind==='before_spawn_contrastive'&&x.sourceBoss==='A'&&x.targetBoss==='B'&&x.windowHours===6),hypothesis=d.hypotheses.find(x=>x.featureId===feature?.id);
+ assert.ok(run.beforeSpawnFeatures>0);assert.ok(feature);assert.equal(feature.status,'DISCOVERED');assert.equal(feature.productionEligible,false);assert.ok(feature.metrics.lift>1.5);assert.ok(feature.lineage.positive.length>=20);assert.ok(Number.isFinite(feature.medianDelayHours));
+ assert.ok(hypothesis);assert.equal(hypothesis.status,'UNVALIDATED_HYPOTHESIS');assert.equal(hypothesis.modelId,'graph_context_interval');assert.equal(hypothesis.origin,'before_spawn_contrastive');assert.equal(hypothesis.eligibleForExperiment,true);
+});
+
