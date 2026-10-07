@@ -24,7 +24,7 @@ function pairedBinaryTest(pairs,keyA,keyB){
  const k=Math.min(plus,minus);let term=Math.exp(-n*Math.log(2)),tail=term;for(let i=0;i<k;i++){term*=((n-i)/(i+1));tail+=term;}return {p:Math.min(1,2*tail),discordant:n,plus,minus};
 }
 function effectCI(values){if(values.length<2)return null;const m=mean(values),sd=Math.sqrt(mean(values.map(x=>(x-m)**2))),se=sd/Math.sqrt(values.length);return [Math.max(-1,m-1.96*se),Math.min(1,m+1.96*se)];}
-function smd(a,b,key){if(!a.length||!b.length)return null;const ma=mean(a.map(x=>Number(x[key]))),mb=mean(b.map(x=>Number(x[key]))),va=mean(a.map(x=>(Number(x[key])-ma)**2)),vb=mean(b.map(x=>(Number(x[key])-mb)**2)),sd=Math.sqrt((va+vb)/2);return sd>1e-9?(ma-mb)/sd:0;}
+function smd(a,b,key){if(!a.length||!b.length)return null;const ma=mean(a.map(x=>Number(x[key]))),mb=mean(b.map(x=>Number(x[key]))),va=mean(a.map(x=>(Number(x[key])-ma)**2)),vb=mean(b.map(x=>(Number(x[key])-mb)**2)),sd=Math.sqrt((va+vb)/2);return sd>1e-9?(ma-mb)/sd:Math.abs(ma-mb)<1e-9?0:Number.POSITIVE_INFINITY;}
 function coverageRange(d,sourceBoss,targetBoss,world,asOf){
  const rows=(d.coverage||[]).filter(x=>!x.candidateId&&x.world===world&&x.verified&&x.continuous!==false&&[sourceBoss,targetBoss].includes(x.boss)&&x.knownAt<=asOf);if(!rows.length)return null;return {start:Math.max(asOf-365*DAY,Math.min(...rows.map(x=>x.startAt))),end:Math.min(asOf,Math.max(...rows.map(x=>x.endAt)))};
 }
