@@ -5,6 +5,7 @@ import {stageSource,advanceSource,monitorSources,sourceContribution} from './sou
 import {advancePolicy,recordProspective,resolveProspective,governedSignal} from './experiments.mjs';
 import {activateDependency,bayesianUpdate} from './fusion.mjs';
 import {knowledgeGraph} from './knowledge.mjs';
+import {queryTemporalKnowledge} from './temporal-knowledge.mjs';
 import {intelligenceRedTeam} from './red-team.mjs';
 import {makeObservation} from '../normalization/observations.mjs';
 import {recomputeEvent} from '../deduplication/events.mjs';
@@ -17,6 +18,7 @@ export async function discoveryControl(intel,operation,input,at=Date.now()){
  if(operation==='dependency')return activateDependency(d,input.id,intel.sources,at);
  if(operation==='red-team'){const result=intelligenceRedTeam(intel,input.world,at);d.redTeamHistory.push(result);return result;}
  if(operation==='knowledge')return knowledgeGraph(intel,input.world,at,{offset:input.offset,limit:input.limit});
+ if(operation==='graph-query')return queryTemporalKnowledge(intel,input.world,input,Number.isFinite(input.asOf)?Math.min(input.asOf,at):at);
  if(operation==='evidence')return windowEvidence(intel,input.world,input.boss,input.startAt,input.endAt,input.prior,at);
  if(operation==='schedule'){
   if(!Number.isFinite(input.hour)||input.hour<0||input.hour>=24||!String(input.sourceRef||'').trim()||!Number.isFinite(input.validFrom)||input.validFrom>at)throw new Error('Server save exige hora de Brasília, validade e origem verificável');
