@@ -3,16 +3,18 @@ import {MODEL_FAMILY_VERSION} from '../prediction/version.mjs';
 export const MODEL_SPECS={
  adaptive_ensemble:{name:'Ensemble adaptativo',version:MODEL_FAMILY_VERSION,status:'Champion',features:['mean10','median','hour','weekday','driftScore']},
  robust_interval:{name:'Intervalo robusto com memória longa',version:'1.0.0',status:'Shadow',features:['median','mean5','stddev','driftScore']},
- empirical_survival:{name:'Sobrevivência empírica',version:'1.0.0',status:'Shadow',features:['elapsedHours','median','samples']}
+ empirical_survival:{name:'Sobrevivência empírica',version:'1.0.0',status:'Shadow',features:['elapsedHours','median','samples']},
+ graph_context_interval:{name:'Intervalo com contexto temporal do Knowledge Graph',version:'1.0.0',status:'Shadow',features:['median','mean5','driftScore','bossesLast6h','bossesLast12h','bossesLast24h','relatedBossHoursAgo','relatedBossAfterLastTarget']}
 };
 export function candidatePrediction(name,features,parameters={}){
  const xs=features.intervals,v=features.values,last=features.rows.at(-1)?.estimatedAt;if(xs.length<5||last==null||v.preciseSamples<5)return null;
  const recentWindow=Math.max(3,Math.min(30,Number(parameters.recentWindow)||10));let baseShare=Math.max(0,Math.min(.8,Number.isFinite(Number(parameters.recentShare))?Number(parameters.recentShare):.2)),driftShare=Math.max(baseShare,Math.min(.9,Number.isFinite(Number(parameters.driftRecentShare))?Number(parameters.driftRecentShare):.4));if(parameters.ablateRecent===true){baseShare=0;driftShare=0;}if(parameters.ablateHistory===true){baseShare=1;driftShare=1;}
- let center=quantile(xs,Math.max(.1,Math.min(.9,Number(parameters.quantile)||.5)));
- if(name==='robust_interval'){const recent=quantile(xs.slice(-recentWindow),.5),share=v.driftScore>=40?driftShare:baseShare;center=(1-share)*center+share*recent;}
- if(!['robust_interval','empirical_survival'].includes(name))throw new Error('Modelo desconhecido');
+ let center=quantile(xs,Math.max(.1,Math.min(.9,Number(parameters.quantile)||.5))),recentWeight=0,longHistoryWeight=1,graphApplied=false,graphTargetHours=null;
+ if(['robust_interval','graph_context_interval'].includes(name)){const recent=quantile(xs.slice(-recentWindow),.5),share=v.driftScore>=40?driftShare:baseShare;center=(1-share)*center+share*recent;recentWeight=share;longHistoryWeight=1-share;}
+ if(name==='graph_context_interval'){const ago=Number(v.relatedBossHoursAgo),windowStart=Math.max(0,Number(parameters.windowStartHours)||0),windowEnd=Math.max(windowStart,Number(parameters.windowHours)||0),delay=Number(parameters.medianDelayHours),weight=Math.max(.05,Math.min(.7,Number(parameters.graphWeight)||.35)),direction=String(parameters.direction||'POSITIVE');if(direction==='POSITIVE'&&v.relatedBossAfterLastTarget&&Number.isFinite(ago)&&Number.isFinite(delay)&&windowEnd>0&&ago>=windowStart&&ago<=windowEnd&&delay>=ago){graphTargetHours=v.elapsedHours-ago+delay;if(Number.isFinite(graphTargetHours)&&graphTargetHours>=v.elapsedHours){center=(1-weight)*center+weight*graphTargetHours;graphApplied=true;}}}
+ if(!['robust_interval','empirical_survival','graph_context_interval'].includes(name))throw new Error('Modelo desconhecido');
  const spread=Math.max(.5,quantile(xs.map(x=>Math.abs(x-center)),.8));
- return {predictedAt:Math.round(last+center*3600000),windowStart:Math.round(last+(center-spread)*3600000),windowEnd:Math.round(last+(center+spread)*3600000),parameters:{...structuredClone(parameters),recentWindow,longHistoryWeight:name==='robust_interval'?1-(v.driftScore>=40?driftShare:baseShare):1,recentWeight:name==='robust_interval'?(v.driftScore>=40?driftShare:baseShare):0,intervals:xs.length},confidence:null};
+ return {predictedAt:Math.round(last+center*3600000),windowStart:Math.round(last+(center-spread)*3600000),windowEnd:Math.round(last+(center+spread)*3600000),parameters:{...structuredClone(parameters),recentWindow,longHistoryWeight,recentWeight,graphApplied,graphTargetHours,intervals:xs.length},confidence:null};
 }
 export function survivalCurve(features,horizons=[6,12,24,48,72]){
  const xs=features.intervals,elapsed=features.values.elapsedHours;if(xs.length<10||elapsed==null)return {status:'insufficient',horizons:[]};
