@@ -145,7 +145,18 @@ Saídas:
 - similaridade;
 - eventos e timestamps correspondentes.
 
-Novelty não reduz o Champion automaticamente. Ela precisa primeiro demonstrar ganho como sinal no AI Lab.
+Existe também um **Novel State confidence guard** de confiabilidade. Ele só pode atuar quando há pelo menos 10 estados históricos comparáveis e o estado é classificado como `NOVEL_STATE`.
+
+Esse guardrail:
+
+- não altera `predictedAt`;
+- não desloca a janela prevista;
+- não cria probabilidade de spawn;
+- apenas aplica um limite conservador à confiança;
+- registra score, sample size, melhor similaridade, cap e ajuste;
+- aparece na explicação da previsão e na Central de Confiabilidade.
+
+Com `INSUFFICIENT_HISTORY`, nenhuma penalização é aplicada. A redução é tratada como guardrail de incerteza, não como recalibração estatística ou evidência causal.
 
 ## Graph Feature Store
 
