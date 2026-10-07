@@ -14,7 +14,7 @@ Regra principal: nova IA não é melhor IA. Um Challenger só pode afetar produ�
 
 O laboratório não cria um segundo Prediction Engine. Ele reutiliza:
 - Prediction Engine adaptativo;
-- Feature Store e datasets versionados (feature_version 1.1.0);
+- Feature Store e datasets versionados (feature_version 1.2.0);
 - MLOps Registry e Prediction Runs;
 - calibração;
 - drift detection;
@@ -42,7 +42,8 @@ Como o repositório não contém o estado operacional de produção, métricas a
 
 Famílias disponíveis:
 - robust_interval;
-- empirical_survival.
+- empirical_survival;
+- graph_context_interval (somente para hipóteses governadas originadas do Knowledge Graph).
 
 Cada experimento parametrizado recebe identidade própria. Variantes do mesmo model_id não compartilham Shadow runs, calibração, resultados ou Canary.
 
@@ -246,7 +247,7 @@ Stress tests determinísticos:
 
 O teste mede estabilidade e abstenções. Não é apresentado como teste de acurácia; backtest out-of-sample continua obrigatório.
 
-## Feature Store 1.1.0
+## Feature Store 1.2.0
 
 Foram adicionados sinais experimentais versionados:
 
@@ -256,6 +257,10 @@ Foram adicionados sinais experimentais versionados:
 Regra anti-leakage: sourceCoverage permanece null quando não existe telemetria histórica daquele instante. O AI Lab não usa a cobertura atual para reescrever o passado.
 
 Esses sinais não alteram o Champion automaticamente. Eles existem para que hipóteses futuras possam ser testadas com backtest temporal quando houver histórico suficiente.
+
+A versão 1.2.0 também registra contexto temporal cross-boss (`bossesLast6h`, `bossesLast12h`, `bossesLast24h`, `uniqueBossesLast24h`, `relatedBossHoursAgo` e `relatedBossAfterLastTarget`). Os datasets de experimento persistem os `contextEvents` que originaram esses valores, e o leakage audit exige `available_at <= asOf` para cada evento de contexto.
+
+Features originadas do Knowledge Graph permanecem fora de produção até completar o ciclo AI Lab → Live Shadow → Quality Gate → aprovação → Canary. O Challenger `graph_context_interval` se abstém quando não existe uma relação explicitamente configurada.
 
 ## Log Loss e probabilidades
 
