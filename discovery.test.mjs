@@ -84,3 +84,12 @@ test('Novel State guard reduces only confidence and abstains when historical sta
  assert.equal(novel.applied,true);assert.ok(novel.adjustedConfidence<88);assert.ok(novel.confidenceCap>=60);assert.equal(novel.reason,'novel_server_state');
 });
 
+test('Graph Contribution reports paired MAE only for promoted graph holdouts with enough samples',()=>{
+ const s=intelligence();ensureTemporalKnowledge(s.discovery,T);s.mlops={lab:{experiments:{
+  good:{id:'good',world:'World',boss:'B',kind:'graph_feature',status:'PROMOTED',createdAt:T,promotedAt:T+H,result:{historical:{holdoutImprovementPct:25,historicalGate:{holdout:{champion:{samples:40,maeMinutes:20},challenger:{samples:40,maeMinutes:15}}}}}},
+  weak:{id:'weak',world:'World',boss:'C',kind:'graph_feature',status:'PROMOTED',createdAt:T,promotedAt:T+H,result:{historical:{holdoutImprovementPct:50,historicalGate:{holdout:{champion:{samples:5,maeMinutes:20},challenger:{samples:5,maeMinutes:10}}}}}}
+ }}};
+ const d=temporalKnowledgeDashboard(s,'World',T+2*H);
+ assert.equal(d.graphContribution.promotedGraphExperiments,2);assert.equal(d.graphContribution.pairedSamples,40);assert.equal(d.graphContribution.championWithoutGraphMaeMinutes,20);assert.equal(d.graphContribution.graphCandidateMaeMinutes,15);assert.equal(d.graphContribution.validatedMaeGainMinutes,5);assert.equal(d.graphContribution.experiments.length,1);
+});
+
