@@ -111,3 +111,12 @@ test('Graph context features are as-known-at safe and drive only the experiment 
  const c=candidatePrediction('graph_context_interval',f,{sourceBoss:'Source',windowHours:6,windowStartHours:0,medianDelayHours:8,graphWeight:.35,direction:'POSITIVE'});assert.equal(c.parameters.graphApplied,true);assert.ok(c.predictedAt>=asOf);
  const late=structuredClone(src);late.id='late-source';late.updatedAt=asOf+H;late.evidence[0].evidenceId='late-source-evidence';late.evidence[0].processedAt=asOf+H;late.evidence[0].collectedAt=asOf+H;late.evidence[0].reportedAt=asOf+H;const safe=buildFeatures([...es,late],'Boss','World',asOf,{relatedBoss:'Source'});assert.equal(safe.values.relatedBossHoursAgo,null);
 });
+
+
+test('A promoted graph model falls back to the base Champion when its relationship degrades',()=>{
+ const s=intel(30);ensureMLOps(s);const lab=ensureAILab(s),exp=createLabExperiment(s,{hypothesis:'A relação Source para Boss melhora a previsão temporal fora da amostra.',world:'World',boss:'Boss',modelId:'graph_context_interval',kind:'graph_feature',features:['f'],parameters:{sourceBoss:'Source',windowStartHours:0,windowHours:6,medianDelayHours:8,graphWeight:.35,direction:'POSITIVE',featureId:'f',relationId:'r'}}).experiment;
+ lab.champions['World|boss']={modelId:'graph_context_interval',modelVersion:'1.0.0',experimentId:exp.id,scope:'World|boss',promotedAt:1};
+ s.discovery={temporalKnowledge:{featureRegistry:{f:{id:'f',status:'TESTING'}},relationshipRegistry:{r:{id:'r',status:'DEGRADED'}}}};
+ const base=predictAdaptive(s.events,'Boss','World',{},T+3000*H),result=applyLabModel(s,base,'Boss','World','key',T+3000*H);
+ assert.equal(result.prediction,base);assert.equal(result.rollout.selected,false);assert.equal(result.rollout.reason,'graph_feature_not_active_or_relationship_degraded');
+});
