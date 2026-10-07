@@ -334,6 +334,7 @@ Consultas suportadas:
 - relações de fontes;
 - Prediction Error relationships, global ou recalculado no escopo de um boss;
 - latência de confirmações por fonte;
+- causal screening por boss/relação;
 - relationship drift + evolução temporal;
 - estados históricos semelhantes;
 - as-known-at.
@@ -362,6 +363,7 @@ Ela mostra:
 - Server Save Analysis;
 - Prediction Error Relationship Graph;
 - Confirmation Latency Graph;
+- Temporal Causal Discovery Lab;
 - Relationship Evolution;
 - Graph Feature Store;
 - Hypothesis Queue;
@@ -378,6 +380,66 @@ Para proteger produção:
 - no máximo 60 bosses entram na análise relacional por execução;
 - snapshots históricos são preenchidos em lotes de até 250 por execução;
 - nenhum experimento é promovido automaticamente.
+
+## Temporal Causal Discovery Lab
+
+O Causal Lab é uma camada de **screening quasi-experimental observacional**. Ele não converte correlação em causa por nomenclatura.
+
+Relações Boss → Boss elegíveis passam por:
+
+1. ordem temporal obrigatória;
+2. covariáveis exclusivamente pré-tratamento;
+3. matching nearest-neighbor temporal;
+4. caliper máximo;
+5. balanceamento das covariáveis observadas por SMD;
+6. comparação pareada do outcome;
+7. FDR Benjamini-Yekutieli entre hipóteses;
+8. placebo reverso — o efeito não deve aparecer antes do suposto tratamento;
+9. estabilidade entre metade antiga e recente da amostra;
+10. lineage completo dos pares matched.
+
+Covariáveis de matching incluem somente contexto conhecido antes do anchor, como:
+
+- bosses nas últimas 6h/12h/24h;
+- bosses distintos em 24h;
+- tempo desde último evento;
+- tempo desde último Source Boss;
+- tempo desde último Target Boss;
+- tempo desde Server Save conhecido;
+- hora local em representação circular;
+- regime conhecido quando disponível.
+
+Gates padrão:
+
+- pelo menos 20 pares matched;
+- match rate ≥ 60%;
+- max absolute SMD ≤ 0,25;
+- efeito absoluto ≥ 10 pontos percentuais;
+- significância ajustada q ≤ 0,05;
+- placebo reverso sem efeito material/significativo;
+- estabilidade temporal aprovada.
+
+Estados incluem:
+
+- `CAUSAL_CANDIDATE`;
+- `REJECTED_NO_EFFECT`;
+- `REJECTED_PLACEBO`;
+- `INCONCLUSIVE_BALANCE`;
+- `INCONCLUSIVE_STABILITY`;
+- `INSUFFICIENT_DATA`.
+
+Mesmo em `CAUSAL_CANDIDATE`:
+
+- `causalityProven=false`;
+- `productionEligible=false`;
+- `aiLabPromotionEligible=false`;
+- confundimento não medido permanece possível;
+- a hipótese apenas recebe prioridade adicional no AI Lab existente;
+- nenhum experimento é criado ou promovido automaticamente.
+
+Causalidade comprovada exigiria no futuro um desenho de identificação mais forte, como randomização, intervenção natural defensável ou outra estratégia causal apropriada e auditável.
+
+O registry causal é versionado e preserva resultados rejeitados/inconclusivos como negative knowledge. A migration `009_temporal_causal_lab.sql` prepara persistência para hypotheses, versões e runs.
 
 ## Graph Contribution
 
@@ -437,6 +499,8 @@ Relações negativas são registradas, mas o primeiro Challenger graph-context a
 Sequence Mining ainda é uma camada de descoberta; uma sequência não entra automaticamente como feature.
 
 O Prediction Error Relationship Graph associa contexto/modelo a erros resolvidos com baseline, risco relativo e FDR. Ele é diagnóstico: `productionEligible=false` e `causalityProven=false`.
+
+O Temporal Causal Discovery Lab nunca usa `CAUSAL_CANDIDATE` como sinônimo de causalidade provada. Matching e placebos reduzem algumas explicações alternativas, mas não eliminam confundimento não observado.
 
 Reporter identities continuam pseudonimizadas e o sistema não cria perfis pessoais além do necessário para qualidade/independência de evidência.
 
