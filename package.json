@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-isolation=none tests.mjs mlops.test.mjs discovery.test.mjs discovery-completion.test.mjs extension.test.mjs investigation.test.mjs",
+    "test": "node --test --test-isolation=none tests.mjs mlops.test.mjs discovery.test.mjs discovery-completion.test.mjs extension.test.mjs investigation.test.mjs reliability.test.mjs",
     "cloud:build": "node cloud/build.mjs",
     "cloud:check": "node cloud/smoke.mjs",
     "cloud:deploy": "wrangler deploy",
