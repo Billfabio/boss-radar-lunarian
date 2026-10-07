@@ -7,7 +7,7 @@ export const MODEL_SPECS={
 };
 export function candidatePrediction(name,features,parameters={}){
  const xs=features.intervals,v=features.values,last=features.rows.at(-1)?.estimatedAt;if(xs.length<5||last==null||v.preciseSamples<5)return null;
- const recentWindow=Math.max(3,Math.min(30,Number(parameters.recentWindow)||10)),baseShare=Math.max(0,Math.min(.8,Number.isFinite(Number(parameters.recentShare))?Number(parameters.recentShare):.2)),driftShare=Math.max(baseShare,Math.min(.9,Number.isFinite(Number(parameters.driftRecentShare))?Number(parameters.driftRecentShare):.4));
+ const recentWindow=Math.max(3,Math.min(30,Number(parameters.recentWindow)||10));let baseShare=Math.max(0,Math.min(.8,Number.isFinite(Number(parameters.recentShare))?Number(parameters.recentShare):.2)),driftShare=Math.max(baseShare,Math.min(.9,Number.isFinite(Number(parameters.driftRecentShare))?Number(parameters.driftRecentShare):.4));if(parameters.ablateRecent===true){baseShare=0;driftShare=0;}if(parameters.ablateHistory===true){baseShare=1;driftShare=1;}
  let center=quantile(xs,Math.max(.1,Math.min(.9,Number(parameters.quantile)||.5)));
  if(name==='robust_interval'){const recent=quantile(xs.slice(-recentWindow),.5),share=v.driftScore>=40?driftShare:baseShare;center=(1-share)*center+share*recent;}
  if(!['robust_interval','empirical_survival'].includes(name))throw new Error('Modelo desconhecido');
