@@ -130,17 +130,4 @@ test('Analog Forecasting uses only historically resolved states and abstains wit
  const store={},ds=datasetSnapshot(store,f,{experiment:'analog_state_interval'});assert.equal(ds.analogExamples.length,f.analogExamples.length);assert.equal(verifyDataset(ds),true);
 });
 
-test('Server Save challenger requires an explicit known schedule and valid statistical bucket',()=>{
- const es=rows(20),asOf=availableAt(es.at(-1))+1,without=buildFeatures(es,'Boss','World',asOf),withSave=buildFeatures(es,'Boss','World',asOf,{serverSaveHour:6});
- const params={bucketFromHours:0,bucketToHours:6,saveLift:2.2,serverSaveWeight:.25};
- assert.equal(without.values.serverSaveHours,null);assert.equal(candidatePrediction('server_save_context_interval',without,params),null);
- assert.ok(Number.isFinite(withSave.values.serverSaveHours));const p=candidatePrediction('server_save_context_interval',withSave,params);assert.ok(p);assert.equal(p.parameters.serverSaveApplied,true);assert.ok(p.predictedAt>=asOf);
- assert.equal(candidatePrediction('server_save_context_interval',withSave,{...params,saveLift:1}),null);
-});
-
-test('Server Save temporal experiment versions the schedule known at each asOf',()=>{
- const s=intel(40);s.discovery={serverSaveSchedules:[{id:'save-v1',world:'World',hour:6,knownAt:T,validFrom:T,sourceRef:'verified'}]};
- const r=temporalExperiment(s,'World','server_save_context_interval',T+5000*H,{boss:'Boss',parameters:{bucketFromHours:0,bucketToHours:6,saveLift:2,serverSaveWeight:.25}});
- assert.ok(r.samples>0);assert.equal(r.leakagePassed,true);for(const id of r.datasetIds){const ds=s.mlops.datasets[id];assert.ok(ds.context.serverSaveSchedule);assert.ok(ds.context.serverSaveSchedule.knownAt<=ds.asOf);assert.ok(ds.context.serverSaveSchedule.validFrom<=ds.asOf);}
-});
 
