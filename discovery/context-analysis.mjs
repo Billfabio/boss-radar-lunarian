@@ -1,0 +1,40 @@
+import {eventsAsOf,horizonLabel} from './canonical-events.mjs';
+import {mean,wilson,adjustFDR} from './statistics.mjs';
+
+const H=3600000,DAY=24*H,BEFORE=[1,3,6,12,24],SAVE_BUCKETS=[[0,6],[6,12],[12,18],[18,24]];
+const round=(n,d=4)=>Number.isFinite(n)?Math.round(n*10**d)/10**d:null;
+function erf(x){const sign=x<0?-1:1,a=Math.abs(x),t=1/(1+.3275911*a),y=1-(((((1.061405429*t-1.453152027)*t+1.421413741)*t-.284496736)*t+.254829592)*t)*Math.exp(-a*a);return sign*y;}
+const normalCdf=z=>(1+erf(z/Math.SQRT2))/2;
+function twoProp(k1,n1,k0,n0){if(!n1||!n0)return 1;const p1=k1/n1,p0=k0/n0,p=(k1+k0)/(n1+n0),se=Math.sqrt(Math.max(0,p*(1-p)*(1/n1+1/n0)));if(!se)return p1===p0?1:0;return Math.min(1,2*(1-normalCdf(Math.abs((p1-p0)/se))));}
+function latestSchedule(d,world,at){return (d.serverSaveSchedules||[]).filter(s=>s.world===world&&s.knownAt<=at&&s.validFrom<=at).sort((a,b)=>b.validFrom-a.validFrom)[0]||null;}
+function localHour(at){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(at)).map(x=>[x.type,x.value]));return (Number(p.hour)%24)+Number(p.minute)/60;}
+function hoursSinceSave(d,world,at){const s=latestSchedule(d,world,at);return s?((localHour(at)-Number(s.hour)+24)%24):null;}
+function coverageSamples(d,boss,world,asOf,stepMs=H){
+ const rows=[];for(const c of d.coverage||[]){if(c.candidateId||c.boss!==boss||c.world!==world||!c.verified||c.knownAt>asOf)continue;for(let at=Math.max(c.startAt,asOf-365*DAY);at<c.endAt&&at<=asOf;at+=stepMs)rows.push(at);}return [...new Set(rows)].sort((a,b)=>a-b);
+}
+export function beforeSpawnAnalysis(d,world,asOf,{boss=null,limit=50}={}){
+ const events=eventsAsOf(d,world,asOf),bosses=boss?[boss]:[...new Set(events.map(e=>e.boss))],results=[],tests=[];
+ for(const target of bosses){const targets=events.filter(e=>e.boss===target&&e.spawn.lower===e.spawn.upper),negativeAnchors=coverageSamples(d,target,world,asOf,3*H).filter(at=>horizonLabel(events,d.coverage,target,world,at,3*H,asOf).value===0);if(targets.length<10||negativeAnchors.length<20){results.push({boss:target,status:'INSUFFICIENT_DATA',positiveEvents:targets.length,negativeWindows:negativeAnchors.length,signals:[]});continue;}
+  const sources=[...new Set(events.map(e=>e.boss))].filter(x=>x!==target),signals=[];
+  for(const source of sources)for(const hours of BEFORE){let positive=0;for(const t of targets)if(events.some(e=>e.boss===source&&e.spawn.upper<t.spawn.estimate&&e.spawn.lower>=t.spawn.estimate-hours*H))positive++;let negative=0;for(const at of negativeAnchors)if(events.some(e=>e.boss===source&&e.spawn.upper<=at&&e.spawn.lower>=at-hours*H&&e.availableAt<=at))negative++;
+   const pn=targets.length,nn=negativeAnchors.length,pp=positive/pn,np=negative/nn,lift=np>0?pp/np:null,row={sourceBoss:source,targetBoss:target,windowHours:hours,positiveOccurrences:positive,positiveSamples:pn,negativeOccurrences:negative,negativeSamples:nn,preSpawnProbability:pp,backgroundProbability:np,lift,ci95:wilson(positive,pn),test:{p:twoProp(positive,pn,negative,nn),q:null},productionEligible:false,causalityProven:false};signals.push(row);tests.push({row,test:row.test});}
+  results.push({boss:target,status:'MEASURED',positiveEvents:targets.length,negativeWindows:negativeAnchors.length,signals});
+ }
+ adjustFDR(tests,'test','BY');
+ for(const r of results)for(const x of r.signals||[]){const enough=x.positiveSamples>=20&&x.negativeSamples>=30&&x.positiveOccurrences>=5,material=x.lift!=null&&(x.lift>=1.5||x.lift<=.67),sig=x.test.q!=null&&x.test.q<=.05;x.status=!enough?'INSUFFICIENT_SAMPLE':sig&&material?'CANDIDATE_SIGNAL':'REJECTED';x.confidence=x.status==='CANDIDATE_SIGNAL'?round(1-x.test.q):null;}
+ for(const r of results)r.signals=(r.signals||[]).sort((a,b)=>(a.status==='CANDIDATE_SIGNAL'?0:1)-(b.status==='CANDIDATE_SIGNAL'?0:1)||Math.abs(Math.log(b.lift||1))-Math.abs(Math.log(a.lift||1))).slice(0,limit);
+ return {world,asOf,falseDiscoveryMethod:'Benjamini-Yekutieli',results,note:'Compara janelas antes do spawn com janelas observáveis em que o boss não apareceu. Associação não implica causalidade.'};
+}
+export function serverSaveAnalysis(d,world,asOf,{boss=null}={}){
+ const events=eventsAsOf(d,world,asOf),bosses=boss?[boss]:[...new Set(events.map(e=>e.boss))],rows=[],tests=[];
+ for(const target of bosses){const own=events.filter(e=>e.boss===target&&e.spawn.lower===e.spawn.upper&&latestSchedule(d,world,e.spawn.estimate)),exposure=coverageSamples(d,target,world,asOf,H).filter(at=>latestSchedule(d,world,at));if(own.length<20||exposure.length<40){rows.push({boss:target,status:'INSUFFICIENT_DATA',eventSamples:own.length,exposureSamples:exposure.length,buckets:[]});continue;}
+  const buckets=SAVE_BUCKETS.map(([lo,hi])=>{const k=own.filter(e=>{const h=hoursSinceSave(d,world,e.spawn.estimate);return h>=lo&&h<hi;}).length,bn=exposure.filter(at=>{const h=hoursSinceSave(d,world,at);return h>=lo&&h<hi;}).length,p=k/own.length,base=bn/exposure.length,lift=base>0?p/base:null,row={fromHours:lo,toHours:hi,events:k,eventSamples:own.length,exposureSamples:bn,totalExposureSamples:exposure.length,eventProbability:p,baselineExposureProbability:base,lift,ci95:wilson(k,own.length),test:{p:twoProp(k,own.length,bn,exposure.length),q:null},productionEligible:false,causalityProven:false};tests.push({row,test:row.test});return row;});
+  rows.push({boss:target,status:'MEASURED',eventSamples:own.length,exposureSamples:exposure.length,buckets});
+ }
+ adjustFDR(tests,'test','BY');for(const r of rows)for(const x of r.buckets||[]){const enough=x.eventSamples>=30&&x.totalExposureSamples>=60&&x.events>=5,material=x.lift!=null&&(x.lift>=1.5||x.lift<=.67),sig=x.test.q!=null&&x.test.q<=.05;x.status=!enough?'INSUFFICIENT_SAMPLE':sig&&material?'CANDIDATE_SIGNAL':'REJECTED';x.confidence=x.status==='CANDIDATE_SIGNAL'?round(1-x.test.q):null;}
+ return {world,asOf,buckets:SAVE_BUCKETS,results:rows,falseDiscoveryMethod:'Benjamini-Yekutieli',note:'Server Save é apenas hipótese temporal. Exposição é estimada somente em períodos de cobertura verificada; nenhum bucket vira feature automaticamente.'};
+}
+export function investigationGraphContext(temporal,boss,{limit=5}={}){
+ const incoming=(temporal?.topRelationships||[]).filter(x=>x.targetEntity?.id===boss&&['ACTIVE','VALIDATED','TESTING','DISCOVERED'].includes(x.status)).sort((a,b)=>(b.metrics?.qualityScore||0)-(a.metrics?.qualityScore||0)).slice(0,limit),before=(temporal?.beforeSpawn?.results||[]).find(x=>x.boss===boss),similar=temporal?.similarHistoricalStates||[];
+ return {boss,relationships:incoming.map(x=>({id:x.id,sourceBoss:x.sourceEntity.id,status:x.status,window:x.window,sampleSize:x.metrics?.sampleSize??0,baselineProbability:x.metrics?.baselineProbability??null,conditionalProbability:x.metrics?.conditionalProbability??null,lift:x.metrics?.lift??null,adjustedSignificance:x.metrics?.adjustedSignificance??null})),beforeSpawnSignals:(before?.signals||[]).filter(x=>x.status==='CANDIDATE_SIGNAL').slice(0,limit),similarStates:similar.slice(0,limit).map(x=>({eventId:x.eventId,similarity:x.similarity,eventTime:x.eventTime})),noveltyScore:temporal?.stateNoveltyScore??null,novelStateStatus:temporal?.novelStateStatus??null,note:'Contexto histórico não confirma candidato e não é contado como fonte independente.'};
+}
