@@ -42,7 +42,7 @@ export function renderAILab(data){
  const form=$('ai-lab-create');if(form)form.addEventListener('submit',e=>{e.preventDefault();void createFromForm();});
 }
 async function createFromForm(prefill=null){
- const world=getModel().settings.world,hypothesis=prefill?.hypothesis||$('ai-lab-hypothesis')?.value.trim(),modelId=prefill?.modelId||$('ai-lab-model')?.value,boss=prefill?.boss??$('ai-lab-boss')?.value.trim()||null,kind=prefill?.kind||'model';
+ const world=getModel().settings.world,hypothesis=prefill?.hypothesis||$('ai-lab-hypothesis')?.value.trim(),modelId=prefill?.modelId||$('ai-lab-model')?.value,boss=(prefill?.boss??$('ai-lab-boss')?.value.trim())||null,kind=prefill?.kind||'model';
  if(!hypothesis)throw new Error('Informe uma hipótese.');const d=await post('/api/intelligence/ai-lab/create',{world,hypothesis,modelId,boss,kind,features:prefill?.features||[]});notify(d.duplicate?'Hipótese equivalente já existe no Experiment Registry.':'Experimento criado em PROPOSED.');await loadAILab();
 }
 export async function loadAILab(){const root=$('ai-lab-content');if(root&&!lab)root.innerHTML='<p class="muted">Carregando AI Lab…</p>';try{const r=await fetch('/api/intelligence/ai-lab',{cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'AI Lab indisponível');renderAILab(d);return d;}catch(e){if(root)root.innerHTML='<div class="notice">'+esc(e.message)+'</div>';throw e;}}
