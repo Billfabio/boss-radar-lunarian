@@ -8,7 +8,7 @@ export function temporalExperiment(intel,world,modelId,at=Date.now(),{boss=null,
  for(const actual of events){
  const previous=events.filter(e=>e.boss===actual.boss&&e.estimatedAt<actual.estimatedAt).at(-1);if(!previous)continue;
  const asOf=availableAt(previous);if(asOf>=actual.estimatedAt){excluded.push({eventId:actual.id,reason:'previous_event_not_available_before_target'});continue;}
- const f=buildFeatures(allEvents,actual.boss,world,asOf,{relatedBoss:modelId==='graph_context_interval'?parameters.sourceBoss||null:null}),p=predictAdaptive(f.rows,actual.boss,world,{},asOf),start=performance.now(),c=candidatePrediction(modelId,f,parameters);if(p.status!=='ready'||!c||f.values.preciseSamples<5)continue;
+ const f=buildFeatures(allEvents,actual.boss,world,asOf,{relatedBoss:modelId==='graph_context_interval'?parameters.sourceBoss||null:null,includeAnalog:modelId==='analog_state_interval'}),p=predictAdaptive(f.rows,actual.boss,world,{},asOf),start=performance.now(),c=candidatePrediction(modelId,f,parameters);if(p.status!=='ready'||!c||f.values.preciseSamples<5)continue;
  if(!(actual.evidence||[]).some(x=>['minute','hour'].includes(x.precision)&&x.quality?.traceable&&['CONFIRMADO','PROVÁVEL'].includes(x.quality?.status)))continue;
  const ds=datasetSnapshot(s.datasets,f,{experiment:modelId,boss:boss||null,parameters:structuredClone(parameters)}),pairId=actual.id,common={pairId,boss:actual.boss,world,asOf,datasetId:ds.id,resolvedAt:availableAt(actual),actualAt:actual.estimatedAt};
  const prior=history.filter(x=>x.resolvedAt<asOf),bCal=calibrateConfidence(p.confidence,prior.filter(x=>x.modelId==='adaptive_ensemble'),world,actual.boss),cCal=calibrateConfidence(p.confidence,prior.filter(x=>x.modelId===modelId),world,actual.boss);
