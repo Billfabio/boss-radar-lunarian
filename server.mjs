@@ -201,14 +201,44 @@ function validSettings(input) {
   }
   return result;
 }
+async function deliverPush(payload,item){
+  const sub=state.subscriptions.find(x=>x.endpoint===payload.endpoint);if(!sub)return {skipped:true,reason:'subscription_missing'};
+  const response=await sendPush(sub,payload.message,vapid);
+  if(response.status===404||response.status===410){state.subscriptions=state.subscriptions.filter(x=>x.endpoint!==payload.endpoint);return {removed:true,status:response.status};}
+  if(!response.ok)throw new Error('Entrega recusada (HTTP '+response.status+')');
+  if(payload.sentKey){const sent=state.sent[payload.sentKey]||[];if(!sent.includes(payload.endpoint))sent.push(payload.endpoint);state.sent[payload.sentKey]=sent;}
+  if(payload.alertMeta)intelligence.recordAlert({...payload.alertMeta,status:'delivered',message:payload.message});
+  log({boss:payload.message?.boss||payload.alertMeta?.boss||'',world:payload.alertMeta?.world||state.settings.world,kind:payload.alertMeta?.kind||'notification',result:'Enviado ao serviço de push'});
+  appendOperationalEvent(state,'NOTIFICATION_DELIVERED',{tag:payload.message?.tag||'',endpointHash:randomBytes(4).toString('hex'),outboxId:item.id},{correlationId:item.correlationId});
+  broadcast('alert',payload.message);return {ok:true};
+}
+function outboxHandlers(){
+ return {
+  intelligence_ingest_checks:async(payload,item)=>{if(state.operational.controls.predictionDisabled)throw new Error('Prediction Engine desativado pelo kill switch');const result=await intelligence.ingestChecks(payload.records||[]);appendOperationalEvent(state,'INTELLIGENCE_INGESTED',{records:(payload.records||[]).map(x=>x.id),added:result},{correlationId:item.correlationId,idempotencyKey:'intel-ingested:'+item.idempotencyKey});return result;},
+  investigation_start:async(payload,item)=>{if(state.operational.controls.investigationDisabled)throw new Error('Investigation Engine desativado pelo kill switch');const result=await investigation.investigate(payload.candidate,{forceSources:true});lastInvestigationTickAt=Date.now();appendOperationalEvent(state,'INVESTIGATION_PROCESSED',{candidateId:payload.candidate.id,caseId:result.id||null},{correlationId:item.correlationId,idempotencyKey:'investigation-processed:'+item.idempotencyKey});return {caseId:result.id||null};},
+  investigation_decision:async(payload,item)=>{if(state.operational.controls.investigationDisabled)throw new Error('Investigation Engine desativado pelo kill switch');const result=await investigation.recordDecision(payload.candidate,payload.decision);appendOperationalEvent(state,'INVESTIGATION_DECISION_PROCESSED',{candidateId:payload.candidate.id,decisionId:result.id||null,outcome:payload.decision.outcome},{correlationId:item.correlationId,idempotencyKey:'investigation-decision-processed:'+item.idempotencyKey});return {decisionId:result.id||null};},
+  push_alert:deliverPush
+ };
+}
+async function drainOutbox(limit=25){return processOutbox(state,outboxHandlers(),{persist,deadLetters:state.pipelineDeadLetters,limit});}
+async function reliableIngestChecks(records=[]){
+ const ids=records.map(x=>x.id).sort(),correlationId=records.find(x=>x.correlationId)?.correlationId||'trace-checks-'+Buffer.from(ids.join('|')).toString('base64url').slice(0,24),key='intelligence-checks:'+ids.join('|');
+ enqueueOutbox(state,'intelligence_ingest_checks',{records},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CONFIRMED_EVENT_QUEUED_FOR_INTELLIGENCE',{recordIds:ids},{correlationId,idempotencyKey:'event-queued:'+key});await persist();await drainOutbox(10);return {queued:true};
+}
+async function reliableInvestigationStart(candidate){
+ const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-start:'+candidate.id;enqueueOutbox(state,'investigation_start',{candidate},{priority:'HIGH',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'CANDIDATE_INVESTIGATION_QUEUED',{candidateId:candidate.id,boss:candidate.boss},{correlationId,idempotencyKey:'candidate-investigation:'+candidate.id});await persist();await drainOutbox(10);const found=investigation.publicState(candidate.world).cases.find(x=>x.candidateId===candidate.id);if(found)return found;const pending=state.operational.outbox.find(x=>x.idempotencyKey===key);if(pending)throw new Error(pending.lastError||'Investigação preservada na fila para retry');throw new Error('Investigação ainda não disponível');
+}
+async function reliableInvestigationDecision(candidate,decision){
+ const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,key='investigation-decision:'+candidate.id+':'+decision.outcome;enqueueOutbox(state,'investigation_decision',{candidate,decision},{priority:'CRITICAL',idempotencyKey:key,correlationId,maxAttempts:5});appendOperationalEvent(state,'HUMAN_DECISION_QUEUED',{candidateId:candidate.id,outcome:decision.outcome},{correlationId,idempotencyKey:'human-decision:'+key});await persist();await drainOutbox(10);return {queued:true};
+}
 async function notifyCommunityCandidate(candidate){
-  const message={title:'🔥 Lunarian detectou possível '+candidate.boss,body:(candidate.participants||0)+' participantes · '+(candidate.messages||0)+' mensagens · revisar antes de confirmar.',tag:'wa-candidate-'+candidate.id,url:'/',boss:candidate.boss};
-  broadcast('alert',message);
-  for(const sub of [...state.subscriptions]){try{const response=await sendPush(sub,message,vapid);if(response.status===404||response.status===410){state.subscriptions=state.subscriptions.filter(s=>s.endpoint!==sub.endpoint);continue;}if(!response.ok)throw new Error('HTTP '+response.status);}catch(e){log({boss:candidate.boss,world:candidate.world,kind:'community-candidate',result:e.message});}}
-  await persist();
+  const correlationId=candidate.correlationId||'trace-candidate-'+candidate.id,message={title:'🔥 Lunarian detectou possível '+candidate.boss,body:(candidate.participants||0)+' participantes · '+(candidate.messages||0)+' mensagens · revisar antes de confirmar.',tag:'wa-candidate-'+candidate.id,url:'/',boss:candidate.boss};
+  appendOperationalEvent(state,'CANDIDATE_NOTIFICATION_PLANNED',{candidateId:candidate.id,boss:candidate.boss},{correlationId,idempotencyKey:'candidate-notification:'+candidate.id});broadcast('alert',message);
+  for(const sub of state.subscriptions)enqueueOutbox(state,'push_alert',{endpoint:sub.endpoint,message,sentKey:'candidate:'+candidate.id},{priority:'HIGH',idempotencyKey:'push:candidate:'+candidate.id+':'+sub.endpoint,correlationId,maxAttempts:5});
+  await persist();await drainOutbox(20);
 }
 investigation=createInvestigationEngine({state,persist,broadcast,getSnapshot:world=>intelligence.snapshot(world),refreshSources:async()=>{await refresh(true);}});
-const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:records=>intelligence.ingestChecks(records),onCandidate:notifyCommunityCandidate,investigate:candidate=>investigation.investigate(candidate,{forceSources:true}),onDecision:(candidate,decision)=>investigation.recordDecision(candidate,decision),saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),image.bytes),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
+const whatsapp=createWhatsAppSync({state,persist,broadcast,dictionary:()=>buildBossDictionary({catalog,bosstiary,aliases:state.whatsapp?.aliases||{}}),names:()=>[...new Set([...catalog.map(b=>b.name),...bosstiary.map(b=>b.name)])],worlds:WORLDS,readBody:body,onRecords:reliableIngestChecks,onCandidate:notifyCommunityCandidate,investigate:reliableInvestigationStart,onDecision:reliableInvestigationDecision,saveImage:async(id,image)=>writeFile(join(DATA,'group-images',id),favorable=>favorable),favorable:row=>{const data=cache.get(row.world);if(row.date!==brasiliaDate()||!data||data.catalogOnly||Date.now()-data.fetchedAt>300000||lastError)return 'unknown';const p=data.pending.find(p=>p.boss_name===row.boss);return status(p)==='high'?'yes':'unknown';}});
 const server=http.createServer(async(req,res)=>{
   try {
     if(!ALLOWED_HOSTS.has(String(req.headers.host||''))) return json(res,403,{error:'Host não autorizado'});
