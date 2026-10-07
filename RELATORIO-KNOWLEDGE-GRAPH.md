@@ -169,6 +169,34 @@ O Challenger `server_save_context_interval`:
 - passa por Shadow, Quality Gate, aprovação humana e Canary;
 - nunca é promovido automaticamente.
 
+## Confirmation Latency Graph
+
+O sistema mede quanto tempo cada fonte leva para se tornar conhecida pelo pipeline após o horário estimado do evento.
+
+A análise usa apenas evidências:
+
+- rastreáveis;
+- CONFIRMADO/PROVÁVEL;
+- com collectedAt/processedAt/reportedAt válidos;
+- conhecidas até o `asOf`.
+
+Por fonte são calculados:
+
+- amostra;
+- mediana de latência;
+- P90;
+- taxa ≤15 min;
+- taxa ≤60 min;
+- taxa acima do threshold de atraso;
+- background de outras fontes;
+- risco relativo;
+- FDR ajustado por Benjamini-Yekutieli;
+- lineage de eventos/evidências.
+
+Estados possíveis incluem `SLOW_ASSOCIATION`, `FAST_ASSOCIATION`, `NORMAL` e `INSUFFICIENT_SAMPLE`.
+
+Essa camada é diagnóstica: `weightAdjustment=null`, `productionEligible=false` e `causalityProven=false`. Nenhuma reputação ou peso de fonte muda automaticamente por esse resultado.
+
 ## Novel State e estados semelhantes
 
 O Temporal Intelligence Engine calcula uma representação determinística do estado atual e compara com snapshots históricos.
@@ -305,6 +333,7 @@ Consultas suportadas:
 - relações depois de um boss;
 - relações de fontes;
 - Prediction Error relationships, global ou recalculado no escopo de um boss;
+- latência de confirmações por fonte;
 - relationship drift + evolução temporal;
 - estados históricos semelhantes;
 - as-known-at.
@@ -332,6 +361,7 @@ Ela mostra:
 - Before-Spawn Contrastive Analysis;
 - Server Save Analysis;
 - Prediction Error Relationship Graph;
+- Confirmation Latency Graph;
 - Relationship Evolution;
 - Graph Feature Store;
 - Hypothesis Queue;
