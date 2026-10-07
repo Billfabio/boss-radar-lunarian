@@ -6,7 +6,7 @@ import {ensureDiscovery,registerCandidate,sourceSample,addContext,addCoverage,di
 import {buildCases,signalFeatures,probabilities,runDiscovery} from './discovery/signals.mjs';
 import {pairedSign,adjustFDR,probabilityMetrics} from './discovery/statistics.mjs';
 import {bossGraph,sourceGraph} from './discovery/graphs.mjs';
-import {ensureTemporalKnowledge,refreshTemporalKnowledge,temporalKnowledgeDashboard,queryTemporalKnowledge} from './discovery/temporal-knowledge.mjs';
+import {ensureTemporalKnowledge,refreshTemporalKnowledge,temporalKnowledgeDashboard,queryTemporalKnowledge,noveltyConfidenceGuard} from './discovery/temporal-knowledge.mjs';
 import {historicalReplay,liveProbability,predictability} from './discovery/live.mjs';
 import {consensusForEvidence} from './consensus/engine.mjs';
 import {recomputeEvent} from './deduplication/events.mjs';
@@ -74,3 +74,13 @@ test('Sequence mining compares conditional probability with a baseline and contr
  const g=bossGraph(events,[],[],'World',T+n*H+H),seq=g.sequences.find(x=>x.pattern==='A → B');
  assert.ok(seq);assert.ok(seq.samples>=30);assert.ok(seq.probability>seq.baselineProbability);assert.ok(seq.lift>2);assert.ok(Number.isFinite(seq.test.q));assert.equal(seq.status,'DISCOVERED');assert.equal(seq.productionEligible,false);assert.equal(seq.causalityProven,false);
 });
+
+test('Novel State guard reduces only confidence and abstains when historical states are insufficient',()=>{
+ const insufficient=noveltyConfidenceGuard({status:'INSUFFICIENT_HISTORY',samples:4,noveltyScore:.9,similarStates:[],policy:{minHistoricalStates:10,novelStateThreshold:.45,maxConfidencePenalty:40,minConfidenceCap:60}},88);
+ assert.equal(insufficient.applied,false);assert.equal(insufficient.adjustedConfidence,88);assert.equal(insufficient.reason,'insufficient_historical_states');
+ const known=noveltyConfidenceGuard({status:'KNOWN_STATE',samples:20,noveltyScore:.2,similarStates:[{similarity:.8}],policy:{minHistoricalStates:10,novelStateThreshold:.45,maxConfidencePenalty:40,minConfidenceCap:60}},88);
+ assert.equal(known.applied,false);assert.equal(known.adjustedConfidence,88);
+ const novel=noveltyConfidenceGuard({status:'NOVEL_STATE',samples:20,noveltyScore:.8,similarStates:[{similarity:.2}],policy:{minHistoricalStates:10,novelStateThreshold:.45,maxConfidencePenalty:40,minConfidenceCap:60}},88);
+ assert.equal(novel.applied,true);assert.ok(novel.adjustedConfidence<88);assert.ok(novel.confidenceCap>=60);assert.equal(novel.reason,'novel_server_state');
+});
+
