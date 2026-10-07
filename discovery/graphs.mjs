@@ -34,8 +34,8 @@ function sequenceMining(events){
  return [...pairRows,...tripleRows].sort((a,b)=>b.occurrences-a.occurrences).slice(0,500);
 }
 export function bossGraph(events,coverage,experiments,world,asOf){
- const bosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],edges=[],tests=[],baselineCache=new Map();
- if(bosses.length>100)return {nodes:bosses,edges:[],sequences:[],status:'limit_exceeded',numberOfTests:0,note:'Limite de 100 bosses; segmente a análise.'};
+ const allBosses=[...new Set(events.filter(e=>e.world===world).map(e=>e.boss))],counts=new Map(allBosses.map(b=>[b,events.filter(e=>e.world===world&&e.boss===b&&e.spawn.lower===e.spawn.upper).length])),bosses=allBosses.filter(b=>(counts.get(b)||0)>=5).sort((a,b)=>(counts.get(b)||0)-(counts.get(a)||0)).slice(0,60),edges=[],tests=[],baselineCache=new Map();
+ if(!bosses.length)return {nodes:allBosses,edges:[],sequences:sequenceMining(events),status:'insufficient_sample',numberOfTests:0,analyzedBosses:0,skippedBosses:allBosses.length,note:'Nenhum boss possui cinco aparições exatas para análise relacional.'};
  for(const from of bosses)for(const to of bosses){if(from===to)continue;const anchors=events.filter(e=>e.world===world&&e.boss===from&&e.spawn.lower===e.spawn.upper),influence=[];
   for(const [lo,hi] of WINDOWS){const row=relationshipWindow(events,coverage,anchors,to,world,asOf,lo,hi,baselineCache);influence.push(row);if(row.samples>=10&&row.baselineSamples>=20)tests.push({from,to,row,test:row.test});}
   edges.push({from,to,windows:influence,productionEligible:false,causalityProven:false,status:'TESTED'});
@@ -45,7 +45,7 @@ export function bossGraph(events,coverage,experiments,world,asOf){
   const candidates=edge.windows.filter(w=>w.status==='CANDIDATE_RELATIONSHIP');edge.status=candidates.length?'CANDIDATE_RELATIONSHIP':edge.windows.some(w=>w.status==='REJECTED')?'REJECTED':'INSUFFICIENT_SAMPLE';edge.bestWindow=candidates.sort((a,b)=>b.qualityScore-a.qualityScore)[0]||null;
   const exp=experiments.filter(e=>e.world===world&&e.boss===edge.to&&e.signal==='after:'+edge.from).at(-1);edge.predictiveValueProven=exp?.status==='SHADOW_MODE';edge.experimentId=exp?.id??null;
  }
- return {nodes:bosses,edges:edges.filter(e=>e.status!=='INSUFFICIENT_SAMPLE'||e.windows.some(w=>w.occurrences)),sequences:sequenceMining(events),status:'statistical_association_only',numberOfTests:tests.length,falseDiscoveryMethod:'Benjamini-Yekutieli',windows:WINDOWS,note:'Associações temporais não implicam causalidade. Relações candidatas ainda exigem experimento temporal e Shadow.'};
+ return {nodes:allBosses,analyzedBosses:bosses.length,skippedBosses:Math.max(0,allBosses.length-bosses.length),edges:edges.filter(e=>e.status!=='INSUFFICIENT_SAMPLE'||e.windows.some(w=>w.occurrences)),sequences:sequenceMining(events),status:'statistical_association_only',numberOfTests:tests.length,falseDiscoveryMethod:'Benjamini-Yekutieli',windows:WINDOWS,note:'Associações temporais não implicam causalidade. Relações candidatas ainda exigem experimento temporal e Shadow.'};
 }
 export function sourceGraph(events){
  const pairs=new Map(),latencies=new Map();
