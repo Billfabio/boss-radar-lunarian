@@ -5,13 +5,14 @@ export const MODEL_SPECS={
  robust_interval:{name:'Intervalo robusto com memória longa',version:'1.0.0',status:'Shadow',features:['median','mean5','stddev','driftScore']},
  empirical_survival:{name:'Sobrevivência empírica',version:'1.0.0',status:'Shadow',features:['elapsedHours','median','samples']}
 };
-export function candidatePrediction(name,features){
+export function candidatePrediction(name,features,parameters={}){
  const xs=features.intervals,v=features.values,last=features.rows.at(-1)?.estimatedAt;if(xs.length<5||last==null||v.preciseSamples<5)return null;
- let center=quantile(xs,.5);
- if(name==='robust_interval'){const recent=quantile(xs.slice(-10),.5),share=v.driftScore>=40?.4:.2;center=(1-share)*center+share*recent;}
+ const recentWindow=Math.max(3,Math.min(30,Number(parameters.recentWindow)||10)),baseShare=Math.max(0,Math.min(.8,Number.isFinite(Number(parameters.recentShare))?Number(parameters.recentShare):.2)),driftShare=Math.max(baseShare,Math.min(.9,Number.isFinite(Number(parameters.driftRecentShare))?Number(parameters.driftRecentShare):.4));
+ let center=quantile(xs,Math.max(.1,Math.min(.9,Number(parameters.quantile)||.5)));
+ if(name==='robust_interval'){const recent=quantile(xs.slice(-recentWindow),.5),share=v.driftScore>=40?driftShare:baseShare;center=(1-share)*center+share*recent;}
  if(!['robust_interval','empirical_survival'].includes(name))throw new Error('Modelo desconhecido');
  const spread=Math.max(.5,quantile(xs.map(x=>Math.abs(x-center)),.8));
- return {predictedAt:Math.round(last+center*3600000),windowStart:Math.round(last+(center-spread)*3600000),windowEnd:Math.round(last+(center+spread)*3600000),parameters:{longHistoryWeight:name==='robust_interval'?(v.driftScore>=40?.6:.8):1,intervals:xs.length},confidence:null};
+ return {predictedAt:Math.round(last+center*3600000),windowStart:Math.round(last+(center-spread)*3600000),windowEnd:Math.round(last+(center+spread)*3600000),parameters:{...structuredClone(parameters),recentWindow,longHistoryWeight:name==='robust_interval'?1-(v.driftScore>=40?driftShare:baseShare):1,recentWeight:name==='robust_interval'?(v.driftScore>=40?driftShare:baseShare):0,intervals:xs.length},confidence:null};
 }
 export function survivalCurve(features,horizons=[6,12,24,48,72]){
  const xs=features.intervals,elapsed=features.values.elapsedHours;if(xs.length<10||elapsed==null)return {status:'insufficient',horizons:[]};
