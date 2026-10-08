@@ -1,0 +1,103 @@
+import {adaptiveMethodWeight} from '../learning/model-performance.mjs';
+import {detectDrift} from '../learning/drift.mjs';
+import {probabilityDistribution} from './distribution.mjs';
+import {predictionReadiness} from './abstention.mjs';
+import {eventIntervals,quantile} from '../mlops/statistics.mjs';
+const DAY=86400000,HOUR=3600000,clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const q=quantile;
+const median=a=>q(a,.5);
+const confirmed=e=>/^confirmed_/.test(e.status)&&!e.anomaly&&!['CONFLITANTE','SUSPEITO','DESCARTADO'].includes(e.qualityStatus)&&['appearance','kill'].includes(e.eventType);
+const precise=e=>(e.evidence||[]).some(x=>['minute','hour'].includes(x.precision)&&!x.anomaly&&(!x.quality||['CONFIRMADO','PROVÁVEL'].includes(x.quality.status)));
+const rowsFor=(events,boss,world)=>events.filter(e=>e.boss===boss&&e.world===world&&confirmed(e)).sort((a,b)=>a.estimatedAt-b.estimatedAt);
+const intervals=eventIntervals;
+function sourceUsage(rows){
+ const map=new Map();
+ for(const event of rows)for(const x of event.evidence||[]){
+  if((x.quality&&!['CONFIRMADO','PROVÁVEL'].includes(x.quality.status))||x.anomaly)continue;
+  const row=map.get(x.sourceId)||{sourceId:x.sourceId,records:0,preciseRecords:0,qualitySum:0,qualitySamples:0,refs:new Set()};
+  row.records++;if(['minute','hour'].includes(x.precision))row.preciseRecords++;if(Number.isFinite(x.quality?.score)){row.qualitySum+=x.quality.score;row.qualitySamples++;}if(x.sourceRef)row.refs.add(String(x.sourceRef));map.set(x.sourceId,row);
+ }
+ return [...map.values()].map(x=>({sourceId:x.sourceId,records:x.records,preciseRecords:x.preciseRecords,averageQuality:x.qualitySamples?Math.round(x.qualitySum/x.qualitySamples*10)/10:null,sourceRefs:[...x.refs].slice(0,5)})).sort((a,b)=>b.records-a.records||a.sourceId.localeCompare(b.sourceId));
+}
+const circHour=at=>{const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',hour:'numeric',hour12:false,minute:'numeric'}).formatToParts(new Date(at));const o=Object.fromEntries(p.map(x=>[x.type,x.value]));return (Number(o.hour)%24)+Number(o.minute)/60;};
+const weekday=at=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).formatToParts(new Date(at)).find(x=>x.type==='weekday')?.value&&new Date(at-3*HOUR).getUTCDay());
+function weightedMedian(values,weights){if(!values.length)return null;const a=values.map((v,i)=>[v,weights[i]]).sort((x,y)=>x[0]-y[0]),sum=a.reduce((n,x)=>n+x[1],0);let c=0;for(const [v,w] of a){c+=w;if(c>=sum/2)return v;}return a.at(-1)[0];}
+function recencyWeights(n,halfLife=8){return Array.from({length:n},(_,i)=>Math.pow(.5,(n-1-i)/halfLife));}
+function robustSpread(xs,center){return median(xs.map(x=>Math.abs(x-center)))||0;}
+function nextAtSameLocalTime(baseAt,targetHour,dayOffset=0){
+ const d=new Date(baseAt-3*HOUR);d.setUTCDate(d.getUTCDate()+dayOffset);const h=Math.floor(targetHour),m=Math.round((targetHour-h)*60);d.setUTCHours(h,m,0,0);return d.getTime()+3*HOUR;
+}
+function intervalMethod(rows,kind){
+ const ints=intervals(rows);if(ints.length<2)return null;
+ if(kind==='recent'){const recent=ints.slice(-Math.min(12,ints.length)),w=recencyWeights(recent.length,4),center=weightedMedian(recent,w),spread=robustSpread(recent,center);return {name:'recent_interval',predictedAt:rows.at(-1).estimatedAt+center,intervalMs:center,spreadMs:spread,samples:recent.length};}
+ const center=median(ints),spread=robustSpread(ints,center);return {name:'historical_interval',predictedAt:rows.at(-1).estimatedAt+center,intervalMs:center,spreadMs:spread,samples:ints.length};
+}
+function simpleIntervalMethods(rows){
+ const ints=intervals(rows);if(ints.length<2)return [];
+ const last=rows.at(-1).estimatedAt,recent=ints.slice(-Math.min(10,ints.length)),historicalMean=ints.reduce((a,b)=>a+b,0)/ints.length,recentMean=recent.reduce((a,b)=>a+b,0)/recent.length,lastInterval=ints.at(-1);
+ return [
+  {name:'recent_mean_10',predictedAt:last+recentMean,intervalMs:recentMean,spreadMs:robustSpread(recent,recentMean),samples:recent.length},
+  {name:'last_interval',predictedAt:last+lastInterval,intervalMs:lastInterval,spreadMs:robustSpread(recent,lastInterval),samples:1},
+  {name:'historical_mean',predictedAt:last+historicalMean,intervalMs:historicalMean,spreadMs:robustSpread(ints,historicalMean),samples:ints.length}
+ ];
+}
+function hourMethod(rows,intervalCenter){
+ const p=rows.filter(precise);if(p.length<8)return null;const hours=p.map(e=>circHour(e.estimatedAt)),w=recencyWeights(hours.length,10);
+ // Circular mean, then project near interval-based target day.
+ let sx=0,sy=0,sw=0;for(let i=0;i<hours.length;i++){const a=hours[i]/24*2*Math.PI;sx+=Math.cos(a)*w[i];sy+=Math.sin(a)*w[i];sw+=w[i];}
+ const mean=((Math.atan2(sy/sw,sx/sw)/(2*Math.PI)*24)+24)%24,target=rows.at(-1).estimatedAt+(intervalCenter||0),baseDay=new Date(target-3*HOUR),candidate=nextAtSameLocalTime(target,mean,0);
+ const choices=[candidate-DAY,candidate,candidate+DAY].sort((a,b)=>Math.abs(a-target)-Math.abs(b-target));
+ const concentration=Math.sqrt(sx*sx+sy*sy)/sw;
+ return {name:'time_of_day',predictedAt:choices[0],samples:p.length,concentration};
+}
+function weekdayMethod(rows,intervalCenter){
+ if(rows.length<10||!intervalCenter)return null;const counts=Array(7).fill(0),recent=rows.slice(-Math.min(40,rows.length)),w=recencyWeights(recent.length,16);recent.forEach((e,i)=>counts[weekday(e.estimatedAt)]+=w[i]);
+ const best=counts.indexOf(Math.max(...counts)),target=rows.at(-1).estimatedAt+intervalCenter;let candidate=target,bestDist=Infinity;
+ for(let d=-3;d<=3;d++){const x=target+d*DAY;if(weekday(x)===best&&Math.abs(d)<bestDist){candidate=x;bestDist=Math.abs(d);}}
+ const share=counts[best]/counts.reduce((a,b)=>a+b,0);
+ return {name:'weekday',predictedAt:candidate,samples:recent.length,concentration:share};
+}
+export function predictAdaptive(events,boss,world,models={},now=Date.now()){
+ events=events.filter(e=>e.estimatedAt<=now);
+ const rows=rowsFor(events,boss,world),allBossRows=events.filter(e=>e.boss===boss&&e.world===world&&['appearance','kill'].includes(e.eventType)),sourcesUsed=sourceUsage(rows),excluded={anomalies:allBossRows.filter(e=>e.anomaly).length,conflicts:allBossRows.filter(e=>e.qualityStatus==='CONFLITANTE').length,suspect:allBossRows.filter(e=>['SUSPEITO','DESCARTADO','AGUARDANDO_CONFIRMAÇÃO'].includes(e.qualityStatus)).length};
+ if(rows.length<5)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:Math.min(49,rows.length*8),scoreLabel:'DADOS INSUFICIENTES',methods:[],sourceUsage:sourcesUsed,excluded,explain:[`Apenas ${rows.length} aparições confirmadas e aprovadas pela camada de qualidade.`]};
+ const hist=intervalMethod(rows,'historical'),recent=intervalMethod(rows,'recent');if(!hist)return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',sampleSize:rows.length,confidence:0,probability:null,predictionScore:35,scoreLabel:'DADOS INSUFICIENTES',methods:[],sourceUsage:sourcesUsed,excluded,explain:['Histórico insuficiente para estimar intervalo.']};
+ const drift=detectDrift(events,boss,world),recentMultiplier=drift.recentWeightMultiplier||1,historyMultiplier=drift.historyWeightMultiplier||1;
+ const methods=[hist,recent,...simpleIntervalMethods(rows),hourMethod(rows,recent?.intervalMs||hist.intervalMs),weekdayMethod(rows,recent?.intervalMs||hist.intervalMs)].filter(Boolean);
+ const modelState=models[world+'|'+String(boss).toLowerCase()]?.methods||{},experienced=Object.values(modelState).filter(x=>(x.count||0)>=8&&Number.isFinite(x.emaErrorMinutes)),bestLearnedError=experienced.length?Math.min(...experienced.map(x=>x.emaErrorMinutes)):null;
+ const weighted=methods.map(m=>{const bases={recent_interval:1.08,recent_mean_10:1.04,last_interval:.72,historical_interval:1,historical_mean:.78,time_of_day:.62,weekday:.5};let base=bases[m.name]??.6;if(['recent_interval','recent_mean_10','last_interval'].includes(m.name))base*=recentMultiplier;if(['historical_interval','historical_mean'].includes(m.name))base*=historyMultiplier;const intervalLike=!['time_of_day','weekday'].includes(m.name),learned=adaptiveMethodWeight(models,boss,world,m.name,intervalLike?24*60:8*60),learnedState=modelState[m.name]||null,competitive=bestLearnedError!=null&&(learnedState?.count||0)>=8&&Number.isFinite(learnedState?.emaErrorMinutes)?Math.exp(-(learnedState.emaErrorMinutes-bestLearnedError)/Math.max(30,bestLearnedError*.5)):1;const dataFactor=clamp(Math.log2((m.samples||1)+1)/5,.25,1);const quality=m.concentration==null?1:clamp(.35+.9*m.concentration,.35,1.2);return {...m,weight:base*learned*competitive*dataFactor*quality,competitiveWeight:competitive,learnedSamples:learnedState?.count||0,learnedErrorMinutes:learnedState?.emaErrorMinutes??null,learnedHitRate:learnedState?.emaHitRate==null?null:Math.round(learnedState.emaHitRate*1000)/10};});
+ const totalWeight=weighted.reduce((n,m)=>n+m.weight,0)||1;for(const m of weighted)m.normalizedWeight=m.weight/totalWeight;
+ const predictedAt=weightedMedian(weighted.map(m=>m.predictedAt),weighted.map(m=>m.weight));
+ const ints=intervals(rows),globalSpread=Math.max(precise(rows.at(-1))?30*60000:12*HOUR,robustSpread(ints,median(ints)));
+ const disagreement=Math.sqrt(weighted.reduce((n,m)=>n+m.weight*Math.pow(m.predictedAt-predictedAt,2),0)/totalWeight);
+ const uncertainty=Math.max(globalSpread,disagreement,precise(rows.at(-1))?30*60000:12*HOUR),windowStart=Math.round(predictedAt-uncertainty),windowEnd=Math.round(predictedAt+uncertainty);
+ const preciseCount=rows.filter(precise).length,sampleFactor=1-Math.exp(-rows.length/18),agreement=clamp(1-disagreement/Math.max(uncertainty,1),0,1);
+ const dataQuality=median(rows.slice(-20).map(e=>(e.dataQualityScore??Math.round((e.confidence||.5)*100))/100))||.5,source=median(rows.slice(-20).map(e=>e.consensus?.confidence??e.confidence))||.5;
+ const anomalyRate=allBossRows.length?allBossRows.filter(e=>e.anomaly||['CONFLITANTE','SUSPEITO'].includes(e.qualityStatus)).length/allBossRows.length:0,stability=clamp(1-(drift.score||0)/100*.65-anomalyRate*.35,0,1);
+ const learnedMethods=Object.values(models[world+'|'+String(boss).toLowerCase()]?.methods||{}),performance=learnedMethods.length?clamp(learnedMethods.reduce((n,m)=>n+(m.emaHitRate??.5),0)/learnedMethods.length,0,1):.5;
+ const scoreRaw=100*(.25*dataQuality+.2*sampleFactor+.2*agreement+.15*source+.1*performance+.1*stability),predictionScore=Math.round(clamp(scoreRaw/100)*100);
+ const scoreLabel=predictionScore>=95?'CONFIABILIDADE MUITO ALTA':predictionScore>=85?'ALTA':predictionScore>=70?'MODERADA':predictionScore>=50?'BAIXA':'DADOS INSUFICIENTES';
+ const readiness=predictionReadiness({sampleSize:rows.length,preciseSamples:preciseCount,dataQuality,predictionScore,anomalyRate,agreement,uncertaintyMs:uncertainty,intervalMedianMs:median(ints)}),exactReady=readiness.canPredictExact;
+ const likelyAt=exactReady?Math.round(predictedAt):null;
+ const confidenceParts={dataQuality:.22*dataQuality,history:.22*sampleFactor,modelAgreement:.2*agreement,sourceReliability:.16*source,temporalQuality:.08*(exactReady?1:.5),stability:.12*stability};
+ const rawConfidence=Object.values(confidenceParts).reduce((a,b)=>a+b,0),confidence=clamp(rawConfidence,.05,.97),confidenceScale=rawConfidence>0?confidence/rawConfidence:1;
+ const confidenceBreakdown={dataQuality:Math.round(confidenceParts.dataQuality*confidenceScale*1000)/10,history:Math.round(confidenceParts.history*confidenceScale*1000)/10,modelAgreement:Math.round(confidenceParts.modelAgreement*confidenceScale*1000)/10,sourceReliability:Math.round(confidenceParts.sourceReliability*confidenceScale*1000)/10,temporalQuality:Math.round(confidenceParts.temporalQuality*confidenceScale*1000)/10,stability:Math.round(confidenceParts.stability*confidenceScale*1000)/10,total:Math.round(confidence*100)};
+ const last=rows.at(-1).estimatedAt,lower=windowStart-last,upper=windowEnd-last,hits=ints.filter(x=>x>=lower&&x<=upper).length,probability=Math.round(1000*(hits+1)/(ints.length+2))/10;
+ const full=median(ints),recentInts=ints.slice(-Math.min(10,ints.length)),recentCenter=median(recentInts),trend=recentCenter>full*1.1?'intervalos aumentando':recentCenter<full*.9?'intervalos diminuindo':'estável';
+ const historicalMean=ints.reduce((a,b)=>a+b,0)/ints.length,lastInterval=ints.at(-1),recentMean=recentInts.reduce((a,b)=>a+b,0)/recentInts.length;
+ const challengers=[
+  {name:'baseline_historical_mean',predictedAt:Math.round(last+historicalMean),baseline:true},
+  {name:'baseline_last_interval',predictedAt:Math.round(last+lastInterval),baseline:true},
+  {name:'baseline_median',predictedAt:Math.round(last+full),baseline:true},
+  {name:'baseline_recent_mean_10',predictedAt:Math.round(last+recentMean),baseline:true}
+ ];
+ const totalWindowMinutes=Math.max(60,2*uncertainty/60000),slotMinutes=Math.max(30,Math.ceil(totalWindowMinutes/24/30)*30),distributionSlots=Math.max(4,Math.min(24,Math.ceil(totalWindowMinutes/slotMinutes))),distribution=probabilityDistribution(weighted,predictedAt,uncertainty,{slotMinutes,slots:distributionSlots}),bestSlot=distribution.reduce((a,b)=>!a||b.probability>a.probability?b:a,null);
+ const hourRows=rows.filter(precise).slice(-20),hours=hourRows.map(e=>circHour(e.estimatedAt)),bucketCounts=Array(8).fill(0);hours.forEach(h=>bucketCounts[Math.floor(h/3)%8]++);const bestBucket=bucketCounts.indexOf(Math.max(...bucketCounts)),hourShare=hours.length?bucketCounts[bestBucket]/hours.length:null;
+ const explain=[`Previsão baseada em ${rows.length} aparições confirmadas e aprovadas pela qualidade.`,`Qualidade mediana dos dados recentes: ${Math.round(dataQuality*100)} / 100.`,`Intervalo histórico mediano: ${(full/HOUR).toFixed(1)} h; intervalo recente: ${(recentCenter/HOUR).toFixed(1)} h.`,`O ensemble comparou ${weighted.length} métodos; pesos refletem desempenho aprendido, amostra, drift e estabilidade.`,`Boss Prediction Score: ${predictionScore}/100 (${scoreLabel}).`,`Confiança: qualidade ${confidenceBreakdown.dataQuality} pts + histórico ${confidenceBreakdown.history} pts + concordância ${confidenceBreakdown.modelAgreement} pts + fontes ${confidenceBreakdown.sourceReliability} pts + qualidade temporal ${confidenceBreakdown.temporalQuality} pts + estabilidade ${confidenceBreakdown.stability} pts.`];
+ if(drift.detected)explain.push(`Mudança de padrão detectada: intervalo recente ${drift.changePercent}% em relação ao histórico; histórico antigo recebeu menos peso.`);
+ if(hourShare!=null)explain.push(`Nas últimas ${hourRows.length} aparições com horário, a faixa ${String(bestBucket*3).padStart(2,'0')}:00–${String(bestBucket*3+3).padStart(2,'0')}:00 concentrou ${Math.round(hourShare*100)}% dos registros.`);
+ if(!exactReady)explain.push('Os dados não sustentam um minuto exato; apenas a janela probabilística é exibida.');
+ if(!readiness.canPredictWindow){explain.push('Previsão recusada: '+readiness.reasons.join('; ')+'.');return {boss,world,status:'insufficient',reason:'DADOS INSUFICIENTES PARA UMA PREVISÃO CONFIÁVEL.',abstentionReasons:readiness.reasons,sampleSize:rows.length,confidence:Math.round(confidence*100),probability:null,predictionScore,scoreLabel:'DADOS INSUFICIENTES',dataQualityScore:Math.round(dataQuality*100),drift,methods:weighted,challengers,sourceUsage:sourcesUsed,excluded,probabilityDistribution:[],distributionConditional:true,explain};}
+ return {boss,world,status:'ready',phase:now<windowStart?'monitoring':now<=windowEnd?'active':'overdue',sampleSize:rows.length,lastAt:last,baseEventId:rows.at(-1).id,baseEventAt:last,windowStart,windowEnd,predictedCenterAt:Math.round(predictedAt),likelyAt,confidence:Math.round(confidence*100),probability,intervalMinMs:q(ints,.05),intervalAverageMs:full,intervalRecentMs:recentCenter,intervalMaxMs:q(ints,.95),trend,preciseSamples:preciseCount,dataQualityScore:Math.round(dataQuality*100),predictionScore,scoreLabel,drift,uncertaintyMs:Math.round(uncertainty),probabilityDistribution:distribution,distributionConditional:true,distributionSlotMinutes:slotMinutes,bestProbabilitySlot:bestSlot,hourPattern:hourShare==null?null:{startHour:bestBucket*3,endHour:bestBucket*3+3,share:Math.round(hourShare*100)},confidenceBreakdown,readiness,sourceUsage:sourcesUsed,excluded,methods:weighted.map(m=>({name:m.name,predictedAt:Math.round(m.predictedAt),weight:Math.round(m.weight*1000)/1000,normalizedWeight:Math.round(m.normalizedWeight*1000)/1000,samples:m.samples,learnedSamples:m.learnedSamples||0,learnedErrorMinutes:m.learnedErrorMinutes==null?null:Math.round(m.learnedErrorMinutes*10)/10,learnedHitRate:m.learnedHitRate,competitiveWeight:Math.round((m.competitiveWeight??1)*1000)/1000,spreadMs:m.spreadMs||null,concentration:m.concentration==null?null:Math.round(m.concentration*1000)/1000})),challengers,explain};
+}
+export function buildAdaptivePredictions(events,world,models={}){const names=[...new Set(events.filter(e=>e.world===world&&['appearance','kill'].includes(e.eventType)).map(e=>e.boss))];return names.map(b=>predictAdaptive(events,b,world,models)).sort((a,b)=>(b.confidence||0)-(a.confidence||0)||a.boss.localeCompare(b.boss));}

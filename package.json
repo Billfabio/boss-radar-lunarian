@@ -5,10 +5,16 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-isolation=none tests.mjs",
+    "test": "node --test --test-isolation=none tests.mjs mlops.test.mjs discovery.test.mjs discovery-completion.test.mjs extension.test.mjs investigation.test.mjs reliability.test.mjs",
     "cloud:build": "node cloud/build.mjs",
     "cloud:check": "node cloud/smoke.mjs",
-    "cloud:deploy": "wrangler deploy"
+    "cloud:deploy": "wrangler deploy",
+    "check": "node scripts/static-check.mjs",
+    "check:intelligence": "node scripts/intelligence-integrity.mjs",
+    "test:intelligence-regression": "node scripts/intelligence-regression.mjs",
+    "test:intelligence-load": "node scripts/intelligence-load-test.mjs",
+    "test:failure-injection": "node scripts/failure-injection.mjs",
+    "test:extension-benchmark": "node --expose-gc scripts/extension-benchmark.mjs"
   },
   "engines": {
     "node": ">=22.8"

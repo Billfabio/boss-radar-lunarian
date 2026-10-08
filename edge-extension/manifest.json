@@ -1,12 +1,41 @@
 {
   "manifest_version": 3,
   "name": "Boss Radar · Grupo de checagens",
-  "version": "1.2.0",
-  "description": "Importa checagens do grupo escolhido para o Boss Radar neste computador.",
-  "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://web.whatsapp.com/*", "http://127.0.0.1:4317/*"],
-  "optional_host_permissions": ["https://*.workers.dev/*"],
-  "background": {"service_worker": "background.js", "type": "module"},
-  "action": {"default_popup": "popup.html", "default_title": "Boss Radar: checagens do grupo"},
-  "content_scripts": [{"matches": ["https://web.whatsapp.com/*"], "js": ["adapter.js", "content.js"], "run_at": "document_idle"}]
+  "version": "1.6.0",
+  "description": "Sensor leve do grupo Fatal - Bosses Nemesis para criar evidências candidatas no Boss Radar.",
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "http://127.0.0.1:4317/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Boss Radar: checagens do grupo"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "adapter.js",
+        "collector-core.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
 }

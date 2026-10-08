@@ -5,6 +5,11 @@ import {initWhatsAppUI,renderWhatsAppUI} from './whatsapp-ui.mjs';
 import {renderCharacter} from './character-ui.mjs';
 import { status, instant } from './logic.mjs';
 import {activateNotifications} from './notification-flow.mjs';
+import {renderIntelligence,initIntelligenceUI} from './intelligence-ui.mjs';
+import {renderSystemHealth,initSystemHealthUI} from './system-health-ui.mjs';
+import {initAILabUI,loadAILab} from './ai-lab-ui.mjs';
+import {initKnowledgeGraphUI,loadKnowledgeGraph} from './knowledge-graph-ui.mjs';
+import {renderOperations,initOperationsUI} from './operations-ui.mjs';
 const $ = id => document.getElementById(id);
 const safe = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function portrait(b){try{const u=new URL(b.image_url);if(['https://cdn.rubinottools.com','https://www.tibiawiki.com.br'].includes(u.origin))return `<img src="${safe(u.href)}" alt="" loading="lazy">`;}catch{}return safe(b.name.charAt(0));}
@@ -27,16 +32,22 @@ function bosses(includeAll=false){
   for(const name of Object.keys(model.settings.progress)) if(!map.has(name)) map.set(name,{name,history:[],manual:true});
   return [...map.values()].map(b=>({...b,image_url:b.image_url||entryFor(b.name,model.bosstiary||[])?.image_url,prediction:data.pending.find(p=>p.boss_name===b.name),progress:progress(b.name)}));
 }
+let loadInFlight=null,loadAgain=false;
 async function load(){
-  try {const res=await fetch('/api/state');if(!res.ok)throw new Error('Monitor indisponível');model=await res.json();render();}
-  catch(e){$('source-warning').hidden=false;$('source-warning').textContent='Monitor indisponível. Inicie o servidor do Boss Radar. '+e.message;}
+  if(loadInFlight){loadAgain=true;return loadInFlight;}
+  loadInFlight=(async()=>{
+    try {const res=await fetch('/api/state',{cache:'no-store'});if(!res.ok)throw new Error('Monitor indisponível');model=await res.json();render();}
+    catch(e){$('source-warning').hidden=false;$('source-warning').textContent='Monitor indisponível. Inicie o servidor do Boss Radar. '+e.message;}
+  })();
+  try{return await loadInFlight;}finally{loadInFlight=null;if(loadAgain){loadAgain=false;void load();}}
 }
 function render(){
   const all=bosses(); const now=Date.now();
   $('world').innerHTML=model.worlds.map(w=>`<option ${w===model.settings.world?'selected':''}>${safe(w)}</option>`).join('');
-  $('sync').textContent=model.data?`${model.data.catalogOnly?'Catálogo carregado':'Atualizado'} ${format(model.data.fetchedAt)}`:'Fonte ainda não carregada';
-  $('source-warning').hidden=!model.error;
-  $('source-warning').textContent=model.error?'Não foi possível atualizar as previsões. Os dados anteriores podem estar desatualizados; os novos alertas estão suspensos até a atualização voltar a funcionar.':'';
+  $('sync').textContent=model.data?(model.data.stale?`Dados preservados de ${format(model.data.staleFrom||model.data.fetchedAt)}`:`${model.data.catalogOnly?'Catálogo carregado':'Atualizado'} ${format(model.data.fetchedAt)}`):'Fonte ainda não carregada';
+  const sourceIssue=model.error||model.data?.catalogFallback||model.data?.publicError||model.data?.officialError||'';
+  $('source-warning').hidden=!sourceIssue;
+  $('source-warning').textContent=model.error?'Não foi possível atualizar as previsões. Os dados anteriores podem estar desatualizados; os novos alertas estão suspensos até a atualização voltar a funcionar.':sourceIssue;
   $('high-count').textContent=model.error?'—':all.filter(b=>status(b.prediction,now)==='high').length;
   $('boss-count').textContent=all.length;
   $('completed-count').textContent=all.filter(b=>b.progress.completed).length;
@@ -46,7 +57,7 @@ function render(){
   $('lead').value=String(model.settings.leadMinutes);$('favorites-only').checked=model.settings.favoritesOnly;$('monitor-enabled').checked=model.settings.enabled;
   $('push-title').textContent=model.settings.enabled&&model.subscriptions?(model.error?'Navegador inscrito · previsões indisponíveis':'Monitor habilitado'):'Ative os avisos no navegador';
   $('push-desc').textContent=model.settings.enabled&&model.subscriptions?`${model.subscriptions} navegador(es) inscrito(s). Última consulta: ${model.lastPoll?format(model.lastPoll):'aguardando'}.`:'Avisos em dias favoráveis; configure sua rodada para receber um lembrete antecipado.';
-  renderGrid();renderProgress();renderLogs();renderGroupUI();renderWhatsAppUI();
+  renderGrid();renderProgress();renderLogs();renderGroupUI();renderWhatsAppUI();renderIntelligence(model);renderSystemHealth(model);renderOperations(model);
 }
 function renderGrid(){
   const query=$('search').value.toLocaleLowerCase('pt-BR'),filter=$('filter').value,hide=$('hide-completed').checked;
@@ -84,11 +95,11 @@ function updateProgress(name,patch){
 }
 function showView(view){
   currentView=view;
-  for(const element of document.querySelectorAll('.stats,.alertbar,.world,#notification-hint'))element.hidden=['character','progress','checks'].includes(view);
-  const titles={character:['Seu personagem,<br>em um só lugar.','Personagens, aparência animada, skills e experiência.'],radar:['Cada boss, um passo<br>mais perto do completo.','Acompanhe janelas favoráveis e organize seu Bosstiary em um só lugar.'],progress:['Seu progresso,<br>boss por boss.','Registre suas kills e acompanhe as metas do jogo.'],checks:['Toda checagem<br>conta uma história.','Construa seu próprio histórico de encontros em Lunarian.'],alerts:['Prepare a próxima<br>rodada de checagens.','Ajuste quando e quais avisos você quer receber.']};
+  for(const element of document.querySelectorAll('.stats,.alertbar,#notification-hint'))element.hidden=['character','progress','checks','knowledge','ailab','system','operations'].includes(view);
+  const titles={operations:['Olhar no lugar certo,<br>na hora certa.','Priorize bosses, investigações, fontes e alertas usando probabilidade, incerteza, cobertura, risco e valor da informação.'],knowledge:['Entender relações,<br>sem inventar causalidade.','Explore sequências, estados do servidor, relações entre bosses e fontes com baseline, lift, amostra e validação temporal.'],ailab:['Experimentar,<br>medir e provar.','Novos modelos só avançam quando superam o Champion fora da amostra e em eventos futuros.'],system:['Sistema saudável,<br>ou claramente degradado.','Monitore heartbeats, filas, incidentes, backups, integridade e recuperação automática.'],intelligence:['Previsões que aprendem,<br>sem inventar certeza.','Entenda as evidências, a confiança e a evolução do algoritmo.'],character:['Seu personagem,<br>em um só lugar.','Personagens, aparência animada, skills e experiência.'],radar:['Cada boss, um passo<br>mais perto do completo.','Acompanhe janelas favoráveis e organize seu Bosstiary em um só lugar.'],progress:['Seu progresso,<br>boss por boss.','Registre suas kills e acompanhe as metas do jogo.'],checks:['Toda checagem<br>conta uma história.','Construa seu próprio histórico de encontros em Lunarian.'],alerts:['Prepare a próxima<br>rodada de checagens.','Ajuste quando e quais avisos você quer receber.']};
   $('view-title').innerHTML=titles[view][0];$('view-desc').textContent=titles[view][1];
   for(const name of Object.keys(titles)) $(name+'-view').hidden=name!==view;
-  document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+  document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(view==='knowledge')void loadKnowledgeGraph().catch(e=>toast(e.message));if(view==='ailab')void loadAILab().catch(e=>toast(e.message));
 }
 function detail(name){
   const b=bosses(true).find(b=>b.name===name);if(!b)return;
@@ -144,6 +155,12 @@ $('refresh-character').addEventListener('click',()=>action($('refresh-character'
 $('export-character').addEventListener('click',()=>{if(!characterModel?.character){toast('Aguarde a consulta do personagem.');return;}const blob=new Blob([JSON.stringify(characterModel.character,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=selectedCharacter.replace(/[^a-z0-9-]/gi,'-')+'-informacoes-publicas.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 initGroupUI({getModel:()=>model,getBosses:()=>bosses(true),post:api,reload:load,notify:toast});
 initWhatsAppUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initIntelligenceUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initSystemHealthUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initAILabUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initKnowledgeGraphUI({getModel:()=>model,post:api,reload:load,notify:toast});
+initOperationsUI({getModel:()=>model,post:api,reload:load,notify:toast});
+$('intelligence-refresh').addEventListener('click',()=>action($('intelligence-refresh'),async()=>{await api('/api/refresh',{});await load();toast('Fontes consultadas e previsões recalculadas.');}));
 await load();
 void loadCharacterNames().then(()=>loadCharacter()).catch(e=>{$('character-content').textContent=e.message;});
 const events=new EventSource('/api/events');events.addEventListener('update',()=>void load());events.addEventListener('alert',()=>void load());events.addEventListener('source-error',()=>void load());
