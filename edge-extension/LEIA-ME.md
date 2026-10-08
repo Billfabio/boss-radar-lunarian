@@ -4,7 +4,7 @@ Versão atual: **1.5.0**. Esta é a evolução da extensão original do Boss Rad
 
 ## O que mudou
 
-A extensão agora funciona como um sensor local e restrito ao grupo **Lunarian**. Ela não confirma bosses e não escreve diretamente no histórico de aprendizado.
+A extensão agora funciona como um sensor local e restrito ao grupo **Fatal - Bosses Nemesis**. Ela não confirma bosses e não escreve diretamente no histórico de aprendizado.
 
 Fluxo:
 
@@ -18,7 +18,7 @@ Somente a sua ação **CONFIRMAR** ou **CORRIGIR** na Central de Confirmações 
 2. Se já usa a extensão antiga, substitua os arquivos pela versão 1.5.0 e clique **Recarregar**. Não apague o histórico do Boss Radar.
 3. Abra o Boss Radar e o WhatsApp Web no mesmo navegador.
 4. No painel, gere um código de conexão do Collector.
-5. No popup, informe o mundo e o endereço local/HTTPS do seu Boss Radar. O grupo é fixo: **Lunarian**.
+5. No popup, informe o mundo e o endereço local/HTTPS do seu Boss Radar. O grupo é fixo: **Fatal - Bosses Nemesis**. O mundo selecionado pode continuar sendo **Lunarian**.
 6. Cole o código e conecte.
 7. Abra o grupo Fatal - Bosses Nemesis. Na primeira leitura é criado um checkpoint das mensagens já visíveis; elas **não** viram candidatos históricos automaticamente.
 
@@ -26,7 +26,7 @@ O pacote `boss-radar-extension.zip` deve corresponder aos arquivos desta pasta.
 
 ## Privacidade
 
-A extensão não observa conversas privadas, outros grupos, status ou contatos como fonte do Collector. O content script só processa a conversa principal quando o cabeçalho detectado corresponde a **Lunarian**. Quando o WhatsApp expõe um identificador interno estável @g.us, a extensão o vincula localmente e rejeita outra conversa com o mesmo nome visual; esse identificador bruto não é enviado ao Boss Radar.
+A extensão não observa conversas privadas, outros grupos, status ou contatos como fonte do Collector. O content script só processa a conversa principal quando o cabeçalho detectado corresponde a **Fatal - Bosses Nemesis**. Quando o WhatsApp expõe um identificador interno estável @g.us, a extensão o vincula localmente e rejeita outra conversa com o mesmo nome visual; esse identificador bruto não é enviado ao Boss Radar.
 
 A maior parte do descarte ocorre localmente. Mensagens sem boss são filtradas e não entram na fila do backend. Quando uma mensagem relevante é enviada, o backend recebe somente os campos necessários para revisão: texto relacionado ao boss, timestamp, candidatos, classificação contextual, fingerprint e um identificador pseudonimizado do autor.
 
@@ -82,7 +82,8 @@ O Collector envia heartbeat e o painel diferencia:
 
 - `CONNECTED`;
 - `WHATSAPP_NOT_FOUND`;
-- `LUNARIAN_NOT_FOUND`;
+- `TARGET_GROUP_NOT_FOUND`;
+- `LUNARIAN_NOT_FOUND` apenas como compatibilidade com collectors antigos;
 - `PAUSED`;
 - `BACKEND_OFFLINE`;
 - `DEGRADED`;
