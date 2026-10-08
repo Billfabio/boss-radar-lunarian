@@ -4,6 +4,18 @@ function serviceURL(value){const u=new URL(value||BASE);if(u.username||u.passwor
 async function request(path,data,key,base){const stored=await chrome.storage.local.get('config'),url=serviceURL(base||stored.config?.serviceURL);const r=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json','X-Radar-Extension':chrome.runtime.id,...(key?{'X-Radar-Key':key}:{})},body:JSON.stringify(data),signal:AbortSignal.timeout(15000)});let result={};try{result=await r.json();}catch{}if(!r.ok)throw new Error(result.error||('Falha HTTP '+r.status));return result;}
 const metricKeys=['messagesSeen','messagesFiltered','bossMatches','exactMatches','fuzzyMatches','duplicates','errors','domAdapterErrors','observerEvents','batches','requests'];
 function blankMetrics(){return Object.fromEntries(metricKeys.map(k=>[k,0]));}
+async function migrateTargetGroup(){
+ const stored=await chrome.storage.local.get(['config','targetGroupName']);
+ const oldGroup=String(stored.config?.group||stored.targetGroupName||'').trim();
+ if(oldGroup&&oldGroup!==GROUP){
+  await chrome.storage.local.remove(['config','localCheckpoint','lunarianGroupIdentity','targetGroupIdentity','processedMessageKeys','evidenceQueue','serverCheckpoint','retryAttempt','retryAt']);
+  await chrome.storage.local.set({targetGroupName:GROUP,collectorStatus:'DISCONNECTED',collectorMetrics:blankMetrics(),status:'Grupo-alvo atualizado para '+GROUP+'. Gere um novo código no Boss Radar e reconecte o Collector.'});
+  return true;
+ }
+ if(stored.targetGroupName!==GROUP)await chrome.storage.local.set({targetGroupName:GROUP});
+ return false;
+}
+void migrateTargetGroup().catch(()=>{});
 async function addMetrics(delta={}){const {collectorMetrics={}}=await chrome.storage.local.get('collectorMetrics'),next={...blankMetrics(),...collectorMetrics};for(const k of metricKeys)if(Number.isFinite(Number(delta[k])))next[k]=Math.max(0,(next[k]||0)+Number(delta[k]));await chrome.storage.local.set({collectorMetrics:next});return next;}
 async function technicalLog(type,data={}){const {collectorLogs=[]}=await chrome.storage.local.get('collectorLogs'),safe={};for(const [k,v] of Object.entries(data))if(['count','size','status','attempt','code'].includes(k))safe[k]=v;collectorLogs.unshift({at:Date.now(),type:String(type).slice(0,60),data:safe});collectorLogs.length=Math.min(500,collectorLogs.length);await chrome.storage.local.set({collectorLogs});}
 async function setStatus(status,message=''){await chrome.storage.local.set({collectorStatus:status,status:message||status});await technicalLog('COLLECTOR_STATUS',{status});}
@@ -46,4 +58,4 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 });
 chrome.alarms.create('check-group',{periodInMinutes:1});
 chrome.alarms.onAlarm.addListener(async alarm=>{if(alarm.name==='check-group'){const tabs=await chrome.tabs.query({url:'https://web.whatsapp.com/*'});for(const tab of tabs)chrome.tabs.sendMessage(tab.id,{type:'tick',fallback:true}).catch(()=>{});await heartbeat().catch(()=>{});await flushQueue().catch(()=>{});}if(alarm.name==='queue-retry')await flushQueue().catch(()=>{});});
-chrome.runtime.onInstalled.addListener(()=>{chrome.storage.local.set({collectorStatus:'DISCONNECTED',collectorMetrics:blankMetrics()}).catch(()=>{});});
+chrome.runtime.onInstalled.addListener(()=>{migrateTargetGroup().then(changed=>{if(!changed)return chrome.storage.local.set({collectorStatus:'DISCONNECTED',collectorMetrics:blankMetrics(),targetGroupName:GROUP});}).catch(()=>{});});
