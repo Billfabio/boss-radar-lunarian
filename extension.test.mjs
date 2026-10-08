@@ -21,7 +21,7 @@ test('collector core performs exact alias fuzzy matching and context classificat
 test('sanitized DOM extraction snapshot keeps high recall without matching irrelevant chat',async()=>{
  const g=await classic('./edge-extension/collector-core.js'),core=g.BossCollectorCore,c=core.compileDictionary(dictionary),fixture=JSON.parse(await readFile(new URL('./edge-extension/fixtures/lunarian-dom-snapshot.json',import.meta.url),'utf8'));
  for(const row of fixture.messages){const matches=core.match(row.text,c);assert.equal(matches[0]?.name||null,row.expectedBoss);assert.equal(core.classify(row.text),row.context);}
- assert.equal(fixture.group,'Lunarian');assert.notEqual(fixture.wrongGroup,'Lunarian');
+ assert.equal(fixture.group,'Fatal - Bosses Nemesis');assert.notEqual(fixture.wrongGroup,'Fatal - Bosses Nemesis');
 });
 
 test('WhatsApp adapter parses author and message timestamp without sending raw identity',async()=>{
@@ -39,9 +39,9 @@ test('community evidence never reaches intelligence before manual candidate conf
  const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input,onRecords:async rows=>learned.push(...rows)});
  const pair=await sync.control('/api/whatsapp/pair-code',{}),origin='chrome-extension://'+'a'.repeat(32);
  const call=async(path,input,key)=>{let payload,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input};const res={writeHead(n){status=n;},end(v){payload=JSON.parse(v);}};await sync.handle(req,res,new URL('http://127.0.0.1:4317'+path));return {status,...payload};};
- const paired=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'});
+ const paired=await call('/extension/pair',{code:pair.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.4.0'});
  assert.equal(paired.status,200);const at=Date.now()-60000,evidence=[0,1,2].map(i=>({messageFingerprint:String(i+1).repeat(64),bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}],messageTimestamp:at+i*1000,capturedTimestamp:Date.now(),authorHash:String(i+5).repeat(64),contextClassification:'POSSIBLE_REPORT',text:'Ferumbras saiu',normalizedText:'ferumbras saiu',extensionVersion:'1.4.0'}));
- const received=await call('/api/community/evidence',{group:'Lunarian',evidence},paired.key);assert.equal(received.status,200);assert.equal(state.groupChecks.length,0);assert.equal(learned.length,0);assert.equal(state.whatsapp.candidates.length,1);assert.equal(state.whatsapp.candidates[0].status,'PENDING');
+ const received=await call('/api/community/evidence',{group:'Fatal - Bosses Nemesis',evidence},paired.key);assert.equal(received.status,200);assert.equal(state.groupChecks.length,0);assert.equal(learned.length,0);assert.equal(state.whatsapp.candidates.length,1);assert.equal(state.whatsapp.candidates[0].status,'PENDING');
  const id=state.whatsapp.candidates[0].id;await sync.control('/api/whatsapp/candidate-confirm',{id,at});assert.equal(state.groupChecks.length,1);assert.equal(learned.length,1);assert.equal(state.whatsapp.candidates[0].status,'CONFIRMED');
 });
 
@@ -50,8 +50,8 @@ test('collector endpoint is idempotent and duplicate evidence does not create a 
  const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
  const pair=await sync.control('/api/whatsapp/pair-code',{}),origin='chrome-extension://'+'b'.repeat(32);let key;
  const call=async(path,input,k)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':k||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
- key=(await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'})).key;const e={messageFingerprint:'c'.repeat(64),bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}],messageTimestamp:Date.now()-1000,capturedTimestamp:Date.now(),authorHash:'d'.repeat(64),contextClassification:'POSSIBLE_REPORT',text:'Ferumbras saiu',normalizedText:'ferumbras saiu'};
- await call('/api/community/evidence',{group:'Lunarian',evidence:[e]},key);await call('/api/community/evidence',{group:'Lunarian',evidence:[e]},key);assert.equal(state.whatsapp.communityEvidence.length,1);assert.equal(state.whatsapp.candidates.length,1);assert.equal(state.whatsapp.candidates[0].evidenceIds.length,1);
+ key=(await call('/extension/pair',{code:pair.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.4.0'})).key;const e={messageFingerprint:'c'.repeat(64),bossCandidates:[{name:'Ferumbras',matchType:'EXACT',similarity:1}],messageTimestamp:Date.now()-1000,capturedTimestamp:Date.now(),authorHash:'d'.repeat(64),contextClassification:'POSSIBLE_REPORT',text:'Ferumbras saiu',normalizedText:'ferumbras saiu'};
+ await call('/api/community/evidence',{group:'Fatal - Bosses Nemesis',evidence:[e]},key);await call('/api/community/evidence',{group:'Fatal - Bosses Nemesis',evidence:[e]},key);assert.equal(state.whatsapp.communityEvidence.length,1);assert.equal(state.whatsapp.candidates.length,1);assert.equal(state.whatsapp.candidates[0].evidenceIds.length,1);
 });
 
 test('extension source uses MutationObserver instead of aggressive interval and least privileges remain bounded',async()=>{
@@ -67,9 +67,9 @@ test('manual decisions learn pseudonymous reporter reputation and recurring fuzz
  const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
  const origin='chrome-extension://'+'e'.repeat(32),pair=await sync.control('/api/whatsapp/pair-code',{});
  const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
- const key=(await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'})).key,base=Date.now()-3600000;
+ const key=(await call('/extension/pair',{code:pair.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.4.0'})).key,base=Date.now()-3600000;
  const evidence=[0,1,2].map(i=>({messageFingerprint:(String(i+7)).repeat(64),bossCandidates:[{name:'Ferumbras',matchType:'FUZZY',similarity:.91,matched:'Ferunbras'}],messageTimestamp:base+i*20*60000,capturedTimestamp:base+i*20*60000+500,authorHash:String.fromCharCode(97+i).repeat(64),contextClassification:'POSSIBLE_REPORT',text:'Ferunbras saiu',normalizedText:'ferunbras saiu'}));
- await call('/api/community/evidence',{group:'Lunarian',evidence},key);assert.equal(state.whatsapp.candidates.length,3);
+ await call('/api/community/evidence',{group:'Fatal - Bosses Nemesis',evidence},key);assert.equal(state.whatsapp.candidates.length,3);
  for(const c of [...state.whatsapp.candidates])await sync.control('/api/whatsapp/candidate-confirm',{id:c.id,at:c.estimatedAt});
  const p=sync.publicState();assert.equal(p.aliasSuggestions.length,1);assert.equal(p.aliasSuggestions[0].alias,'Ferunbras');assert.equal(p.aliasSuggestions[0].reporters,3);
  assert.equal(p.candidates.find(c=>c.evidence[0].authorHash==='a'.repeat(64)).evidence[0].reporter.samples,1);
@@ -80,8 +80,8 @@ test('heartbeat records collection gaps and distinguishes browser uptime from Lu
  const state={groupChecks:[],whatsapp:{}},sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:()=>buildBossDictionary({catalog:[{name:'Ferumbras'}]}),names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
  const origin='chrome-extension://'+'f'.repeat(32),pair=await sync.control('/api/whatsapp/pair-code',{});
  const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
- const paired=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.4.0'}),now=Date.now();state.whatsapp.collector.lastHeartbeatAt=now-120000;
- await call('/extension/heartbeat',{group:'Lunarian',status:'DEGRADED',extensionVersion:'1.4.0',queueSize:0,metrics:{},diagnostics:{configured:'Lunarian',detected:'Lunarian',domOk:true,gapDetected:true,gapFrom:now-60000,gapTo:now-30000}},paired.key);
+ const paired=await call('/extension/pair',{code:pair.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.4.0'}),now=Date.now();state.whatsapp.collector.lastHeartbeatAt=now-120000;
+ await call('/extension/heartbeat',{group:'Fatal - Bosses Nemesis',status:'DEGRADED',extensionVersion:'1.4.0',queueSize:0,metrics:{},diagnostics:{configured:'Fatal - Bosses Nemesis',detected:'Fatal - Bosses Nemesis',domOk:true,gapDetected:true,gapFrom:now-60000,gapTo:now-30000}},paired.key);
  const p=sync.publicState();assert.equal(p.health.browserConnected,true);assert.equal(p.health.lunarianDetected,true);assert.ok(p.coverage.gaps.some(g=>g.reason==='COLLECTION_GAP'));assert.ok(p.coverage.gaps.some(g=>g.reason==='DOM_COLLECTION_GAP'));
 });
 
@@ -122,9 +122,9 @@ test('disconnect revokes collector key and keeps revocation audit without losing
  const sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:dict,names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
  const pair=await sync.control('/api/whatsapp/pair-code',{}),origin='chrome-extension://'+'g'.repeat(32);
  const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
- const paired=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.5.0'}),collectorId=paired.collectorId;
+ const paired=await call('/extension/pair',{code:pair.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.5.0'}),collectorId=paired.collectorId;
  await sync.control('/api/whatsapp/disconnect',{});assert.equal(sync.publicState().connected,false);assert.equal(sync.publicState().revokedCollectors,1);assert.equal(state.whatsapp.revokedCollectors[0].collectorId,collectorId);
- const old=await call('/extension/config',{group:'Lunarian'},paired.key);assert.notEqual(old.status,200);
+ const old=await call('/extension/config',{group:'Fatal - Bosses Nemesis'},paired.key);assert.notEqual(old.status,200);
 });
 
 test('extension retry uses cryptographic jitter instead of fixed retry storm',async()=>{
