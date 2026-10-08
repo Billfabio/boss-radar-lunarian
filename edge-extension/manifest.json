@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Boss Radar · Grupo de checagens",
-  "version": "1.5.0",
-  "description": "Sensor leve do grupo Lunarian para criar evidências candidatas no Boss Radar.",
+  "version": "1.6.0",
+  "description": "Sensor leve do grupo Fatal - Bosses Nemesis para criar evidências candidatas no Boss Radar.",
   "permissions": [
     "storage",
     "alarms"
