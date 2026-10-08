@@ -1,10 +1,10 @@
-# Auditoria e evolução — WhatsApp Web / Lunarian Collector 1.5
+# Auditoria e evolução — WhatsApp Web / Fatal - Bosses Nemesis Collector 1.6
 
 ## Extensão original
 A extensão existente em edge-extension/ já utilizava Manifest V3, content script no WhatsApp Web, service worker, popup, storage local, pairing próprio com o Boss Radar, fila persistente, MutationObserver, dictionary sincronizado, matching exact/alias/fuzzy, heartbeat, gaps/coverage e Central de Confirmações. Ela foi preservada e evoluída; nenhum segundo collector paralelo foi criado.
 
 ## Problemas encontrados
-- identidade do Lunarian dependia primariamente do nome visual quando o identificador estável não era fixado;
+- identidade do grupo Fatal - Bosses Nemesis dependia primariamente do nome visual quando o identificador estável não era fixado;
 - ausência de cache TTL próprio para impedir reprocessamento local após mutações do DOM/checkpoint degradado;
 - retry exponencial sem jitter;
 - métrica de capture latency media na prática extensão → backend;
@@ -14,7 +14,7 @@ A extensão existente em edge-extension/ já utilizava Manifest V3, content scri
 
 ## Alterações
 - versão 1.5.0;
-- identidade estável local do Lunarian quando disponível via @g.us;
+- identidade estável local do grupo Fatal - Bosses Nemesis quando disponível via @g.us;
 - cache de mensagens processadas: TTL 24h, máximo 10.000;
 - retry exponencial com jitter criptográfico;
 - heartbeat local persistido;
@@ -25,7 +25,7 @@ A extensão existente em edge-extension/ já utilizava Manifest V3, content scri
 - ZIP reconstruído a partir dos fontes atuais;
 - novos testes para cache, gating de contexto, revogação e jitter.
 
-## Fluxo Lunarian
+## Fluxo Fatal - Bosses Nemesis
 WhatsApp Web → WhatsAppDomAdapter → normalização → exact → alias → fuzzy → classificação → fingerprint → fila local → /api/community/evidence → CommunityEvidence → CandidateBossEvent → cross-check → Central de Confirmações → CONFIRMAR/CORRIGIR/REJEITAR.
 
 Nenhuma CommunityEvidence, candidato, pending ou rejected treina a inteligência. Somente confirmação manual cria o registro confirmado que pode seguir para o dataset.
@@ -61,3 +61,11 @@ Benchmark sintético: 6.000 mensagens e 333 bosses.
 O CI agora reprova o matcher se ultrapassar 250 µs/mensagem nesse benchmark ou se perder recall em relação ao filtro legado.
 
 Validação final: 95 arquivos JavaScript/MJS verificados; 160 testes executados; 160 aprovados; 0 falhas. Regression gate, load benchmark, fault injection, benchmark Lunarian, build, smoke e Wrangler dry-run passaram.
+## Alteração do grupo-alvo — v1.6.0
+
+O Collector deixou de procurar o grupo visual **Lunarian** e passa a aceitar exclusivamente **Fatal - Bosses Nemesis** no WhatsApp Web. O nome **Lunarian** continua válido como mundo/servidor do Tibia e não foi renomeado.
+
+A atualização limpa checkpoint, identidade estável, cache de mensagens processadas e fila local vinculados ao grupo antigo quando detecta configuração legada. Por segurança, o Collector deve ser pareado novamente após a atualização.
+
+O backend também valida o novo grupo e mantém o identificador técnico histórico da fonte onde necessário para não fragmentar reputação/telemetria já acumulada.
+
