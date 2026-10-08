@@ -138,3 +138,31 @@ test('long unrelated chat is rejected before fuzzy work while short typo stays d
  assert.equal(core.match('boa noite grupo hunt loot trade qualquer coisa',c).length,0);
  const typo=core.match('Ferunbras',c);assert.equal(typo[0]?.name,'Ferumbras');assert.equal(typo[0]?.matchType,'FUZZY');
 });
+
+test('extension v1.6 targets Fatal - Bosses Nemesis and resets legacy group state',async()=>{
+ const content=await readFile(new URL('./edge-extension/content.js',import.meta.url),'utf8');
+ const background=await readFile(new URL('./edge-extension/background.js',import.meta.url),'utf8');
+ const popup=await readFile(new URL('./edge-extension/popup.js',import.meta.url),'utf8');
+ const manifest=JSON.parse(await readFile(new URL('./edge-extension/manifest.json',import.meta.url),'utf8'));
+ assert.equal(manifest.version,'1.6.0');
+ assert.match(content,/GROUP='Fatal - Bosses Nemesis'/);
+ assert.doesNotMatch(content,/GROUP='Lunarian'/);
+ assert.match(background,/GROUP='Fatal - Bosses Nemesis'/);
+ assert.match(background,/targetGroupName/);
+ assert.match(background,/lunarianGroupIdentity/);
+ assert.match(background,/processedMessageKeys/);
+ assert.match(popup,/group:'Fatal - Bosses Nemesis'/);
+});
+
+test('backend authorizes Fatal - Bosses Nemesis while Lunarian remains the selected world',async()=>{
+ const state={groupChecks:[],whatsapp:{}},sync=createWhatsAppSync({state,persist:async()=>{},broadcast:()=>{},dictionary:()=>buildBossDictionary({catalog:[{name:'Ferumbras'}]}),names:()=>['Ferumbras'],worlds:['Lunarian'],readBody:async req=>req.input});
+ const origin='chrome-extension://'+'h'.repeat(32),pair=await sync.control('/api/whatsapp/pair-code',{});
+ assert.equal(pair.group,'Fatal - Bosses Nemesis');
+ const call=async(path,input,key)=>{let p,status;const req={method:'POST',headers:{origin,'x-radar-key':key||''},input},res={writeHead(n){status=n;},end(v){p=JSON.parse(v);}};await sync.handle(req,res,new URL('http://x'+path));return {status,...p};};
+ const bad=await call('/extension/pair',{code:pair.code,group:'Lunarian',world:'Lunarian',extensionVersion:'1.6.0'});
+ assert.notEqual(bad.status,200);
+ const pair2=await sync.control('/api/whatsapp/pair-code',{});
+ const ok=await call('/extension/pair',{code:pair2.code,group:'Fatal - Bosses Nemesis',world:'Lunarian',extensionVersion:'1.6.0'});
+ assert.equal(ok.status,200);assert.equal(ok.group,'Fatal - Bosses Nemesis');assert.equal(ok.world,'Lunarian');
+});
+
