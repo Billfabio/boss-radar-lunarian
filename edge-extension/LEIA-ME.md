@@ -1,4 +1,4 @@
-# Boss Radar · Lunarian Collector
+# Boss Radar · Fatal - Bosses Nemesis Collector
 
 Versão atual: **1.5.0**. Esta é a evolução da extensão original do Boss Radar; não existe um segundo collector paralelo.
 
@@ -20,7 +20,7 @@ Somente a sua ação **CONFIRMAR** ou **CORRIGIR** na Central de Confirmações 
 4. No painel, gere um código de conexão do Collector.
 5. No popup, informe o mundo e o endereço local/HTTPS do seu Boss Radar. O grupo é fixo: **Lunarian**.
 6. Cole o código e conecte.
-7. Abra o grupo Lunarian. Na primeira leitura é criado um checkpoint das mensagens já visíveis; elas **não** viram candidatos históricos automaticamente.
+7. Abra o grupo Fatal - Bosses Nemesis. Na primeira leitura é criado um checkpoint das mensagens já visíveis; elas **não** viram candidatos históricos automaticamente.
 
 O pacote `boss-radar-extension.zip` deve corresponder aos arquivos desta pasta.
 
